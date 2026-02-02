@@ -19,21 +19,23 @@ class KeyboardController:
 
     # 키보드 눌릴 때 실행
     def on_press(self, key):
-
-
         try:
             if key == keyboard.Key.esc:
                 print('Exit is pressed')
                 self.exit_flag=1
                 return False
-            if key.char.lower() == 'w':
+            if key == keyboard.Key.up:
                 self.go_flag=1
-            if key.char.lower() == 'a':
+            if key == keyboard.Key.left:
                 self.left_flag=1
-            if key.char.lower() == 'd':
+            if key == keyboard.Key.right:
                 self.right_flag=1
-            if key.char.lower() == 's':
+            if key == keyboard.Key.down:
                 self.back_flag=1
+        except:
+            pass
+
+        try:
             if key.char.lower() == 'b':
                 self.brake_flag=1
             if key.char.lower() == 'p':
@@ -61,14 +63,18 @@ class KeyboardController:
     # 키보드 뗄 때 실행
     def on_release(self, key):
         try:
-            if key.char.lower() == 'w':
+            if key == keyboard.Key.up:
                 self.go_flag=0
-            if key.char.lower() == 'a':
+            if key == keyboard.Key.left:
                 self.left_flag=0
-            if key.char.lower() == 'd':
+            if key == keyboard.Key.right:
                 self.right_flag=0
-            if key.char.lower() == 's':
+            if key == keyboard.Key.down:
                 self.back_flag=0
+        except:
+            pass
+
+        try:
             if key.char.lower() == 'b':
                 self.brake_flag=0
             if key.char.lower() == 'p':
