@@ -5,7 +5,6 @@ autonomous/image/
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 
 # Virtual environment
 venv/
