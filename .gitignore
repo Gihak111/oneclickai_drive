@@ -1,5 +1,5 @@
 # Image data folder
-autonomous/image/
+autonomous/autonomous/image/
 
 # Python
 __pycache__/
