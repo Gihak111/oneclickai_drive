@@ -27,12 +27,12 @@ HTML_PAGE = """
     <label>속도 <input id="spd" type="number" step="1" value="30" style="width:80px" onchange="updateParams()"></label>
   </div>
   <div style="margin-top:12px;display:flex;gap:10px;justify-content:center">
-    <button id="btnW" onmousedown="press('w')" onmouseup="release('w')" ontouchstart="press('w')" ontouchend="release('w')">W</button>
+    <button id="btnUp" onmousedown="press('ArrowUp')" onmouseup="release('ArrowUp')" ontouchstart="press('ArrowUp')" ontouchend="release('ArrowUp')">↑</button>
   </div>
   <div style="display:flex;gap:10px;justify-content:center">
-    <button id="btnA" onmousedown="press('a')" onmouseup="release('a')" ontouchstart="press('a')" ontouchend="release('a')">A</button>
-    <button id="btnS" onmousedown="press('s')" onmouseup="release('s')" ontouchstart="press('s')" ontouchend="release('s')">S</button>
-    <button id="btnD" onmousedown="press('d')" onmouseup="release('d')" ontouchstart="press('d')" ontouchend="release('d')">D</button>
+    <button id="btnLeft" onmousedown="press('ArrowLeft')" onmouseup="release('ArrowLeft')" ontouchstart="press('ArrowLeft')" ontouchend="release('ArrowLeft')">←</button>
+    <button id="btnDown" onmousedown="press('ArrowDown')" onmouseup="release('ArrowDown')" ontouchstart="press('ArrowDown')" ontouchend="release('ArrowDown')">↓</button>
+    <button id="btnRight" onmousedown="press('ArrowRight')" onmouseup="release('ArrowRight')" ontouchstart="press('ArrowRight')" ontouchend="release('ArrowRight')">→</button>
   </div>
 </div>
 
@@ -47,12 +47,12 @@ function postKeys(){
 }
 document.addEventListener("keydown", (e) => {
   if (e.repeat) return;
-  const k = e.key.toLowerCase();
-  if (["w","a","s","d"].includes(k)) { pressed.add(k); postKeys(); }
+  const k = e.key;
+  if (["ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(k)) { e.preventDefault(); pressed.add(k); postKeys(); }
 });
 document.addEventListener("keyup", (e) => {
-  const k = e.key.toLowerCase();
-  if (["w","a","s","d"].includes(k)) { pressed.delete(k); postKeys(); }
+  const k = e.key;
+  if (["ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(k)) { pressed.delete(k); postKeys(); }
 });
 window.addEventListener("blur", () => { if (pressed.size){ pressed.clear(); postKeys(); }});
 function press(k){
