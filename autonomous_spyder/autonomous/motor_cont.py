@@ -16,12 +16,9 @@ LEFT_FORWARD = 20
 LEFT_BACKWARD = 21
 LEFT_PWM = 16
 
-neutral_deg = 110 # 중립
-left_deg = 80  # 좌회전
-right_deg = 140  # 우회전
 
-go_output = 30 # 직진속도
-turn_output = 0 # 회전속도
+go_output = 70 # 직진속도
+turn_output = go_output # 회전속도
 
 GPIO.setup(RIGHT_FORWARD,GPIO.OUT)
 GPIO.setup(RIGHT_BACKWARD,GPIO.OUT)
@@ -61,7 +58,7 @@ def motor_stop():
 
 
 
-def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
+def drive(go_flag, left_flag, right_flag, brake_flag, back_flag, shot_flag=0):
     # 브레이크 입력 시 
     if brake_flag == 1:
         motor_stop()
@@ -69,48 +66,40 @@ def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
     # 직진, 후진 동시 입력 시
     elif go_flag == back_flag:
         motor_stop()
-        if left_flag==right_flag:
-            rpi_servo.set_deg(neutral_deg)
-        elif left_flag == 1:
-            rpi_servo.set_deg(left_deg)
-        elif right_flag == 1:
-            rpi_servo.set_deg(right_deg)
+
     # 직진 입력 시
     elif go_flag == 1:
         if left_flag==right_flag: # left right together
-            rpi_servo.set_deg(neutral_deg)
             rightMotor(1 ,0, go_output)
             leftMotor(1 ,0, go_output)
         elif left_flag == 1: #left
-            rpi_servo.set_deg(left_deg)
             rightMotor(1 ,0, go_output)
-            leftMotor(1 ,0, turn_output)
+            leftMotor(0 ,1, turn_output)
         elif right_flag == 1: #right
-            rpi_servo.set_deg(right_deg)
-            rightMotor(1 ,0, turn_output)
+            rightMotor(0 ,1, turn_output)
             leftMotor(1 ,0, go_output)
 
     # 후진 입력 시 
     elif back_flag == 1 :
         if left_flag==right_flag:
-            rpi_servo.set_deg(neutral_deg)
             rightMotor(0 ,1, go_output)
             leftMotor(0 ,1, go_output)
         elif left_flag == 1:
-            rpi_servo.set_deg(left_deg)
             rightMotor(0 ,1, go_output)
-            leftMotor(0 ,1, turn_output)
+            leftMotor(1 ,0, turn_output)
         elif right_flag == 1:
-            rpi_servo.set_deg(right_deg)
-            rightMotor(0 ,1, turn_output)
+            rightMotor(1 ,0, turn_output)
             leftMotor(0 ,1, go_output)
+
+    # 발사 로직
+    if shot_flag == 1:
+        print("shot_flag_on")
+        rpi_servo.set_deg(130)
+        sleep(0.2)
 
 
 if __name__ == '__main__':
     # 직진 5초
-    # ~ rpi_servo.set_deg(neutral_deg)
-    # ~ rightMotor(1 ,0, go_output)
-    # ~ leftMotor(1 ,0, go_output)
     sleep(5)
     
     # 후진 5초 작성

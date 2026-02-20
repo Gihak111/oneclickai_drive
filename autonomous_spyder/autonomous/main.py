@@ -88,8 +88,8 @@ def autonomous_control_loop():
                 # parking.parking()
                 break
 
-        # 모터 동작 수행 (shot_flag=0: 자율주행 중 발사 없음)
-        motor_cont.drive(shot_flag=0, go_flag=key.go_flag, left_flag=key.left_flag, right_flag=key.right_flag, brake_flag=key.brake_flag, back_flag=key.back_flag)
+        # 모터 동작 수행
+        motor_cont.drive(shot_flag=key.shot_flag, go_flag=key.go_flag, left_flag=key.left_flag, right_flag=key.right_flag, brake_flag=key.brake_flag, back_flag=key.back_flag)
 
         # FPS 계산 및 출력
         fps = util.calc_fps(t0)
@@ -114,3 +114,4 @@ if __name__ == "__main__":
     main_thread = threading.Thread(target=camera.capture_img)
     main_thread.start()
     print('main on!')
+

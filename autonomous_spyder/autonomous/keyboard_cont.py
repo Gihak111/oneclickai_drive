@@ -10,6 +10,7 @@ class KeyboardController:
         self.brake_flag = 0
         self.parking_flag = 0
         self.save_flag = 0
+        self.shot_flag = 0
         self.exit_flag = 0
         self.manual = 1
 
@@ -40,12 +41,15 @@ class KeyboardController:
                 self.brake_flag=1
             if key.char.lower() == 'p':
                 self.parking_flag=1
-            if key.char.lower() == 'g':
+            if key.char.lower() == 's':
                 self.save_flag=1
                 print('Save mode ON')
-            if key.char.lower() == 'f':
+            if key.char.lower() == 'a':
                 self.save_flag=0
                 print('Save mode OFF')
+            if key.char.lower() == 'f':
+                self.shot_flag=1
+                print('Shot!')
             if key.char.lower() == 'z':
                 self.manual = 0
                 print('Autonomous mode ON')
@@ -77,6 +81,8 @@ class KeyboardController:
                 self.brake_flag=0
             if key.char.lower() == 'p':
                 self.parking_flag=0
+            if key.char.lower() == 'f':
+                self.shot_flag=0
         except:
             pass
 
