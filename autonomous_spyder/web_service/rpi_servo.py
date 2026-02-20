@@ -1,0 +1,49 @@
+import ctypes
+import time
+
+# initialize
+lib = None
+
+def init():
+    global lib
+    # Load the shared library into ctypes
+    lib = ctypes.CDLL('./servo.so')
+    lib.initializePWM(18)
+
+# Set duty
+def set_deg(new_deg):
+    print("set_deg")
+    global lib
+    duty = calc_duty_from_deg(new_deg)
+    lib.setPWMDuty(int(duty))
+    time.sleep(1)
+    duty = calc_duty_from_deg(90)
+    lib.setPWMDuty(int(duty))
+    
+
+# calc duty
+def calc_duty_from_deg(deg):
+        print("calc_duty_from_deg")
+        deg = min(175, deg)
+        deg = max(5, deg)
+
+        min_duty = 480
+        max_duty = 2600
+
+        min_deg = 0
+        max_deg = 180
+
+        duty = (deg - min_deg) / (max_deg - min_deg) * (max_duty-min_duty) + min_duty
+        return duty
+
+#if __name__ == '__main__':
+#    init()
+#    print(lib)
+#    set_deg(45)
+#    time.sleep(1)
+#    set_deg(60)
+#    time.sleep(1)
+#    set_deg(75)
+#    time.sleep(1)
+#     set_deg(60)
+#    time.sleep(1)    
