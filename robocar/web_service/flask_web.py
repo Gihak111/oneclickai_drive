@@ -5,8 +5,9 @@ from flask_cors import CORS
 from key_cont import handle_key
 from camera_stream import camera, HEADERS_NO_CACHE
 import motor_cont
+import servo_cont
 
-
+servo_cont.init_servos()
 
 app = Flask(__name__)
 CORS(app)
@@ -20,12 +21,6 @@ HTML_PAGE = """
 <img src="/stream.mjpg" style="max-width:100%;border:1px solid #ccc" />
 
 <div style="margin-top:12px;font-family:sans-serif">
-  <div style="display:flex;gap:8px;align-items:center;margin:6px 0">
-    <label>좌각도 <input id="angL" type="number" step="1" value="70" style="width:80px" onchange="updateParams()"></label>
-    <label>직진각 <input id="angS" type="number" step="1" value="90" style="width:80px" onchange="updateParams()"></label>
-    <label>우각도 <input id="angR" type="number" step="1" value="110" style="width:80px" onchange="updateParams()"></label>
-    <label>속도 <input id="spd" type="number" step="1" value="30" style="width:80px" onchange="updateParams()"></label>
-  </div>
   <div style="margin-top:12px;display:flex;gap:10px;justify-content:center">
     <button id="btnUp" onmousedown="press('ArrowUp')" onmouseup="release('ArrowUp')" ontouchstart="press('ArrowUp')" ontouchend="release('ArrowUp')">↑</button>
   </div>
@@ -33,6 +28,33 @@ HTML_PAGE = """
     <button id="btnLeft" onmousedown="press('ArrowLeft')" onmouseup="release('ArrowLeft')" ontouchstart="press('ArrowLeft')" ontouchend="release('ArrowLeft')">←</button>
     <button id="btnDown" onmousedown="press('ArrowDown')" onmouseup="release('ArrowDown')" ontouchstart="press('ArrowDown')" ontouchend="release('ArrowDown')">↓</button>
     <button id="btnRight" onmousedown="press('ArrowRight')" onmouseup="release('ArrowRight')" ontouchstart="press('ArrowRight')" ontouchend="release('ArrowRight')">→</button>
+  </div>
+
+  <hr style="margin:16px 0">
+  <div style="font-weight:bold;margin-bottom:8px">서보 제어 (키보드: Q/A, W/S, E/D)</div>
+  <div style="display:flex;gap:16px;align-items:center">
+    <div>
+      <div style="text-align:center;font-size:12px">Servo 0</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button onclick="moveServo(0,1)">▲</button>
+        <button onclick="moveServo(0,-1)">▼</button>
+      </div>
+    </div>
+    <div>
+      <div style="text-align:center;font-size:12px">Servo 1</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button onclick="moveServo(1,1)">▲</button>
+        <button onclick="moveServo(1,-1)">▼</button>
+      </div>
+    </div>
+    <div>
+      <div style="text-align:center;font-size:12px">Servo 2</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button onclick="moveServo(2,1)">▲</button>
+        <button onclick="moveServo(2,-1)">▼</button>
+      </div>
+    </div>
+    <div id="servoAngles" style="font-size:12px;color:#555"></div>
   </div>
 </div>
 
@@ -48,11 +70,21 @@ function postKeys(){
 document.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   const k = e.key;
-  if (["ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(k)) { e.preventDefault(); pressed.add(k); postKeys(); }
+  if (["ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(k)) {
+    e.preventDefault(); pressed.add(k); postKeys();
+  }
+  if (["q","a","w","s","e","d"].includes(k.toLowerCase())) {
+    pressed.add(k); postKeys();
+  }
 });
 document.addEventListener("keyup", (e) => {
   const k = e.key;
-  if (["ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(k)) { pressed.delete(k); postKeys(); }
+  if (["ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(k)) {
+    pressed.delete(k); postKeys();
+  }
+  if (["q","a","w","s","e","d"].includes(k.toLowerCase())) {
+    pressed.delete(k); postKeys();
+  }
 });
 window.addEventListener("blur", () => { if (pressed.size){ pressed.clear(); postKeys(); }});
 function press(k){
@@ -61,20 +93,16 @@ function press(k){
 function release(k){
   if (pressed.has(k)) { pressed.delete(k); postKeys(); }
 }
-function updateParams() {
-  const neutral = parseInt(document.getElementById('angS').value);
-  const left = parseInt(document.getElementById('angL').value);
-  const right = parseInt(document.getElementById('angR').value);
-  const go = parseInt(document.getElementById('spd').value);
-  fetch('/set_params', {
+function moveServo(channel, direction) {
+  fetch('/servo', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      neutral_deg: neutral,
-      left_deg: left,
-      right_deg: right,
-      go_output: go
-    })
+    body: JSON.stringify({ channel: channel, direction: direction })
+  }).then(r => r.json()).then(data => {
+    if (data.angles) {
+      document.getElementById('servoAngles').textContent =
+        'S0:' + data.angles[0] + '° S1:' + data.angles[1] + '° S2:' + data.angles[2] + '°';
+    }
   });
 }
 </script>
@@ -88,16 +116,14 @@ def index():
 @app.route("/ping", methods=["GET", "HEAD"])
 def ping():
     return 'auto', 200
-  
-@app.route("/set_params", methods=["POST"])
-def set_params():
+
+@app.route("/servo", methods=["POST"])
+def servo():
   data = request.get_json(silent=True) or {}
-  neutral = data.get("neutral_deg", motor_cont.neutral_deg)
-  left = data.get("left_deg", motor_cont.left_deg)
-  right = data.get("right_deg", motor_cont.right_deg)
-  go = data.get("go_output", motor_cont.go_output)
-  motor_cont.set_params(neutral, left, right, go)
-  return jsonify({"ok": 1})
+  channel = data.get("channel", 0)
+  direction = data.get("direction", 0)
+  servo_cont.move_servo(channel, direction)
+  return jsonify({"ok": 1, "angles": servo_cont.get_angles()})
 
 @app.route("/stream.mjpg")
 def stream():

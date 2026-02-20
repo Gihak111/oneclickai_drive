@@ -1,10 +1,25 @@
 import motor_cont
+import servo_cont
 
 key = None
 
 def handle_key(keys):
     # 소문자로 변환하여 대소문자 구분 없이 처리
     keys = [k.lower() for k in keys]
+
+    # 서보 제어 키 처리 (Q/A: 서보0, W/S: 서보1, E/D: 서보2)
+    if 'q' in keys:
+        servo_cont.move_servo(0, 1)
+    if 'a' in keys:
+        servo_cont.move_servo(0, -1)
+    if 'w' in keys:
+        servo_cont.move_servo(1, 1)
+    if 's' in keys:
+        servo_cont.move_servo(1, -1)
+    if 'e' in keys:
+        servo_cont.move_servo(2, 1)
+    if 'd' in keys:
+        servo_cont.move_servo(2, -1)
 
     # 모든 키가 눌리거나, 아무 키도 눌리지 않거나, 3개의 키가 눌리거나, ↑↓ 또는 ←→가 눌리면
     if (len(keys) == 3) or (len(keys) == 4) or ('arrowup' in keys and 'arrowdown' in keys) or ('arrowleft' in keys and 'arrowright' in keys):

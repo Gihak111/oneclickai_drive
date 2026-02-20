@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import threading, time
 import util
-# ~ util.stop_webservice() # 웹서비스 종료, 재부팅 시 다시 실행됨
+util.stop_webservice() # 웹서비스 종료, 재부팅 시 다시 실행됨
 import motor_cont
 import servo_cont
 from keyboard_cont import KeyboardController

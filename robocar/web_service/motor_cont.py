@@ -1,4 +1,8 @@
+import os
 import RPi.GPIO as GPIO
+import numpy as np
+from time import sleep
+from config import GO_OUTPUT, TURN_OUTPUT
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -23,9 +27,6 @@ RIGHT_BACKWARD_PIN1 = 8
 RIGHT_BACKWARD_PIN2 = 7
 RIGHT_BACKWARD_PWM = 25
 
-# 속도 파라미터
-go_output = 25
-turn_output = 20
 
 # LEFT Forward motor GPIO 설정
 GPIO.setup(LEFT_FORWARD_PIN1, GPIO.OUT)
@@ -55,7 +56,6 @@ GPIO.setup(RIGHT_BACKWARD_PWM, GPIO.OUT)
 RIGHT_BACKWARD_MOTOR = GPIO.PWM(RIGHT_BACKWARD_PWM, 100)
 RIGHT_BACKWARD_MOTOR.start(0)
 
-
 # 왼쪽 전방 모터 제어
 def leftForwardMotor(pin1, pin2, pwm):
     LEFT_FORWARD_MOTOR.ChangeDutyCycle(pwm)
@@ -80,7 +80,6 @@ def rightBackwardMotor(pin1, pin2, pwm):
     GPIO.output(RIGHT_BACKWARD_PIN1, pin1)
     GPIO.output(RIGHT_BACKWARD_PIN2, pin2)
 
-
 def motor_stop():
     GPIO.output(LEFT_FORWARD_PIN1, False)
     GPIO.output(LEFT_FORWARD_PIN2, False)
@@ -99,6 +98,11 @@ def motor_stop():
     RIGHT_BACKWARD_MOTOR.ChangeDutyCycle(0)
 
 
+
+
+
+
+
 def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
     # 브레이크 입력 시
     if brake_flag == 1:
@@ -109,54 +113,67 @@ def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
         motor_stop()
     # 직진 입력 시
     elif go_flag == 1:
-        if left_flag == right_flag:  # left right together
-            leftForwardMotor(1, 0, go_output)
-            leftBackwardMotor(1, 0, go_output)
-            rightForwardMotor(1, 0, go_output)
-            rightBackwardMotor(1, 0, go_output)
-        elif left_flag == 1:  # left
-            leftForwardMotor(0, 1, turn_output)
-            leftBackwardMotor(0, 1, turn_output)
-            rightForwardMotor(1, 0, go_output)
-            rightBackwardMotor(1, 0, go_output)
-        elif right_flag == 1:  # right
-            leftForwardMotor(1, 0, go_output)
-            leftBackwardMotor(1, 0, go_output)
-            rightForwardMotor(0, 1, turn_output)
-            rightBackwardMotor(0, 1, turn_output)
+        if left_flag==right_flag: # left right together
+            leftForwardMotor(1, 0, GO_OUTPUT)
+            leftBackwardMotor(1, 0, GO_OUTPUT)
+            rightForwardMotor(1, 0, GO_OUTPUT)
+            rightBackwardMotor(1, 0, GO_OUTPUT)
+        elif left_flag == 1: #left
+            leftForwardMotor(0, 1, TURN_OUTPUT)
+            leftBackwardMotor(0, 1, TURN_OUTPUT)
+            rightForwardMotor(1, 0, GO_OUTPUT)
+            rightBackwardMotor(1, 0, GO_OUTPUT)
+        elif right_flag == 1: #right
+            leftForwardMotor(1, 0, GO_OUTPUT)
+            leftBackwardMotor(1, 0, GO_OUTPUT)
+            rightForwardMotor(0, 1, TURN_OUTPUT)
+            rightBackwardMotor(0, 1, TURN_OUTPUT)
 
     # 후진 입력 시
-    elif back_flag == 1:
-        if left_flag == right_flag:
-            leftForwardMotor(0, 1, go_output)
-            leftBackwardMotor(0, 1, go_output)
-            rightForwardMotor(0, 1, go_output)
-            rightBackwardMotor(0, 1, go_output)
+    elif back_flag == 1 :
+        if left_flag==right_flag:
+            leftForwardMotor(0, 1, GO_OUTPUT)
+            leftBackwardMotor(0, 1, GO_OUTPUT)
+            rightForwardMotor(0, 1, GO_OUTPUT)
+            rightBackwardMotor(0, 1, GO_OUTPUT)
         elif left_flag == 1:
-            leftForwardMotor(1, 0, turn_output)
-            leftBackwardMotor(1, 0, turn_output)
-            rightForwardMotor(0, 1, go_output)
-            rightBackwardMotor(0, 1, go_output)
+            leftForwardMotor(1, 0, TURN_OUTPUT)
+            leftBackwardMotor(1, 0, TURN_OUTPUT)
+            rightForwardMotor(0, 1, GO_OUTPUT)
+            rightBackwardMotor(0, 1, GO_OUTPUT)
         elif right_flag == 1:
-            leftForwardMotor(0, 1, go_output)
-            leftBackwardMotor(0, 1, go_output)
-            rightForwardMotor(1, 0, turn_output)
-            rightBackwardMotor(1, 0, turn_output)
+            leftForwardMotor(0, 1, GO_OUTPUT)
+            leftBackwardMotor(0, 1, GO_OUTPUT)
+            rightForwardMotor(1, 0, TURN_OUTPUT)
+            rightBackwardMotor(1, 0, TURN_OUTPUT)
 
-    elif left_flag == 1:
-        leftForwardMotor(0, 1, go_output)
-        leftBackwardMotor(1, 0, go_output)
-        rightForwardMotor(1, 0, go_output)
-        rightBackwardMotor(0, 1, go_output)
 
-    elif right_flag == 1:
-        leftForwardMotor(1, 0, go_output)
-        leftBackwardMotor(0, 1, go_output)
-        rightForwardMotor(0, 1, go_output)
-        rightBackwardMotor(1, 0, go_output)
+    elif left_flag ==1:
+            leftForwardMotor(0, 1, GO_OUTPUT)
+            leftBackwardMotor(1, 0, GO_OUTPUT)
+            rightForwardMotor(1, 0, GO_OUTPUT)
+            rightBackwardMotor(0, 1, GO_OUTPUT)
 
-    else:
+    elif right_flag ==1:
+            leftForwardMotor(1, 0, GO_OUTPUT)
+            leftBackwardMotor(0, 1, GO_OUTPUT)
+            rightForwardMotor(0, 1, GO_OUTPUT)
+            rightBackwardMotor(1, 0, GO_OUTPUT)
+            
+    else :
         leftForwardMotor(1, 0, 0)
         leftBackwardMotor(1, 0, 0)
         rightForwardMotor(1, 0, 0)
         rightBackwardMotor(1, 0, 0)
+
+if __name__ == '__main__':
+    # 직진 5초
+    sleep(5)
+
+    # 후진 5초 작성
+
+
+    # 좌회전 5초 작성
+
+
+    # 우회전 5초 작성
