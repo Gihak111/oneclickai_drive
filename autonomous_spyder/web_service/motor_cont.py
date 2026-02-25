@@ -4,6 +4,8 @@ import rpi_servo
 from time import sleep
 import ctypes
 import time
+from config import GO_OUTPUT
+
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -19,20 +21,14 @@ LEFT_BACKWARD = 21
 LEFT_PWM = 16
 
 # 초기 파라미터
-go_output = 25 # 직진속도
-neutral_deg = 90 # 중립
-left_deg = 65  # 좌회전
-right_deg = 115  # 우회전
-turn_output = 20 # 회전속도
+go_output = GO_OUTPUT # 직진속도
+
 
 # 외부에서 파라미터를 동적으로 변경할 수 있도록 함수 추가
 def set_params(neutral, left, right, go):
-    global neutral_deg, left_deg, right_deg, go_output, turn_output
-    neutral_deg = neutral
-    left_deg = left
-    right_deg = right
+    global go_output
     go_output = go
-    turn_output = int(go*0.5)
+
 
 # 모터 셋업: 오른쪽
 GPIO.setup(RIGHT_FORWARD,GPIO.OUT)
@@ -83,9 +79,9 @@ def drive(shot_flag, go_flag, left_flag, right_flag, brake_flag, back_flag):
             leftMotor(1 ,0, go_output)
         elif left_flag == 1: # 좌회전
             rightMotor(1 ,0, go_output)
-            leftMotor(1 ,0, turn_output)
+            leftMotor(0 ,1, go_output)
         elif right_flag == 1: # 우회전
-            rightMotor(1 ,0, turn_output)
+            rightMotor(0 ,1, go_output)
             leftMotor(1 ,0, go_output)
             
     # 후진 입력 시 
@@ -95,9 +91,9 @@ def drive(shot_flag, go_flag, left_flag, right_flag, brake_flag, back_flag):
             leftMotor(0 ,1, go_output)
         elif left_flag == 1: # 후진 좌회전
             rightMotor(0 ,1, go_output)
-            leftMotor(0 ,1, turn_output)
+            leftMotor(1 ,0, go_output)
         elif right_flag == 1: # 후진 우회전
-            rightMotor(0 ,1, turn_output)
+            rightMotor(1 ,0, go_output)
             leftMotor(0 ,1, go_output)
             
     elif right_flag==1 :
