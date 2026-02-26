@@ -127,15 +127,15 @@ def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
             rightForwardMotor(1, 0, go_output)
             rightBackwardMotor(1, 0, go_output)
         elif left_flag == 1: #left
-            leftForwardMotor(0, 1, go_output)
-            leftBackwardMotor(0, 1, go_output)
-            rightForwardMotor(1, 0, go_output)
-            rightBackwardMotor(1, 0, go_output)
-        elif right_flag == 1: #right
             leftForwardMotor(1, 0, go_output)
             leftBackwardMotor(1, 0, go_output)
             rightForwardMotor(0, 1, go_output)
             rightBackwardMotor(0, 1, go_output)
+        elif right_flag == 1: #right
+            leftForwardMotor(0, 1, go_output)
+            leftBackwardMotor(0, 1, go_output)
+            rightForwardMotor(1, 0, go_output)
+            rightBackwardMotor(1, 0, go_output)
 
     # 후진 입력 시
     elif back_flag == 1 :
@@ -145,15 +145,15 @@ def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
             rightForwardMotor(0, 1, go_output)
             rightBackwardMotor(0, 1, go_output)
         elif left_flag == 1:
-            leftForwardMotor(1, 0, go_output)
-            leftBackwardMotor(1, 0, go_output)
-            rightForwardMotor(0, 1, go_output)
-            rightBackwardMotor(0, 1, go_output)
-        elif right_flag == 1:
             leftForwardMotor(0, 1, go_output)
             leftBackwardMotor(0, 1, go_output)
             rightForwardMotor(1, 0, go_output)
             rightBackwardMotor(1, 0, go_output)
+        elif right_flag == 1:
+            leftForwardMotor(1, 0, go_output)
+            leftBackwardMotor(1, 0, go_output)
+            rightForwardMotor(0, 1, go_output)
+            rightBackwardMotor(0, 1, go_output)
 
 
     elif left_flag ==1:
