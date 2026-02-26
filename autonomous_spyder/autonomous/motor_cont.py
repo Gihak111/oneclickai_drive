@@ -25,7 +25,7 @@ go_output = GO_OUTPUT # 직진속도
 
 
 # 외부에서 파라미터를 동적으로 변경할 수 있도록 함수 추가
-def set_params(neutral, left, right, go):
+def set_params(go):
     global go_output
     go_output = go
 

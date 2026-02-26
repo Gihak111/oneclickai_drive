@@ -101,11 +101,8 @@ def ping():
 @app.route("/set_params", methods=["POST"])
 def set_params():
   data = request.get_json(silent=True) or {}
-  neutral = data.get("neutral_deg", motor_cont.neutral_deg)
-  left = data.get("left_deg", motor_cont.left_deg)
-  right = data.get("right_deg", motor_cont.right_deg)
   go = data.get("go_output", motor_cont.go_output)
-  motor_cont.set_params(neutral, left, right, go)
+  motor_cont.set_params(go)
   return jsonify({"ok": 1})
 
 @app.route("/stream.mjpg")
