@@ -2,7 +2,16 @@ import os
 import RPi.GPIO as GPIO
 import numpy as np
 from time import sleep
-from config import GO_OUTPUT, TURN_OUTPUT
+from config import GO_OUTPUT
+
+go_output = GO_OUTPUT
+
+
+# 외부에서 파라미터를 동적으로 변경할 수 있도록 함수 추가
+def set_params(go):
+    global go_output
+    go_output = go
+
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -102,7 +111,6 @@ def motor_stop():
 
 
 
-
 def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
     # 브레이크 입력 시
     if brake_flag == 1:
@@ -114,51 +122,51 @@ def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
     # 직진 입력 시
     elif go_flag == 1:
         if left_flag==right_flag: # left right together
-            leftForwardMotor(1, 0, GO_OUTPUT)
-            leftBackwardMotor(1, 0, GO_OUTPUT)
-            rightForwardMotor(1, 0, GO_OUTPUT)
-            rightBackwardMotor(1, 0, GO_OUTPUT)
+            leftForwardMotor(1, 0, go_output)
+            leftBackwardMotor(1, 0, go_output)
+            rightForwardMotor(1, 0, go_output)
+            rightBackwardMotor(1, 0, go_output)
         elif left_flag == 1: #left
-            leftForwardMotor(0, 1, TURN_OUTPUT)
-            leftBackwardMotor(0, 1, TURN_OUTPUT)
-            rightForwardMotor(1, 0, GO_OUTPUT)
-            rightBackwardMotor(1, 0, GO_OUTPUT)
+            leftForwardMotor(0, 1, go_output)
+            leftBackwardMotor(0, 1, go_output)
+            rightForwardMotor(1, 0, go_output)
+            rightBackwardMotor(1, 0, go_output)
         elif right_flag == 1: #right
-            leftForwardMotor(1, 0, GO_OUTPUT)
-            leftBackwardMotor(1, 0, GO_OUTPUT)
-            rightForwardMotor(0, 1, TURN_OUTPUT)
-            rightBackwardMotor(0, 1, TURN_OUTPUT)
+            leftForwardMotor(1, 0, go_output)
+            leftBackwardMotor(1, 0, go_output)
+            rightForwardMotor(0, 1, go_output)
+            rightBackwardMotor(0, 1, go_output)
 
     # 후진 입력 시
     elif back_flag == 1 :
         if left_flag==right_flag:
-            leftForwardMotor(0, 1, GO_OUTPUT)
-            leftBackwardMotor(0, 1, GO_OUTPUT)
-            rightForwardMotor(0, 1, GO_OUTPUT)
-            rightBackwardMotor(0, 1, GO_OUTPUT)
+            leftForwardMotor(0, 1, go_output)
+            leftBackwardMotor(0, 1, go_output)
+            rightForwardMotor(0, 1, go_output)
+            rightBackwardMotor(0, 1, go_output)
         elif left_flag == 1:
-            leftForwardMotor(1, 0, TURN_OUTPUT)
-            leftBackwardMotor(1, 0, TURN_OUTPUT)
-            rightForwardMotor(0, 1, GO_OUTPUT)
-            rightBackwardMotor(0, 1, GO_OUTPUT)
+            leftForwardMotor(1, 0, go_output)
+            leftBackwardMotor(1, 0, go_output)
+            rightForwardMotor(0, 1, go_output)
+            rightBackwardMotor(0, 1, go_output)
         elif right_flag == 1:
-            leftForwardMotor(0, 1, GO_OUTPUT)
-            leftBackwardMotor(0, 1, GO_OUTPUT)
-            rightForwardMotor(1, 0, TURN_OUTPUT)
-            rightBackwardMotor(1, 0, TURN_OUTPUT)
+            leftForwardMotor(0, 1, go_output)
+            leftBackwardMotor(0, 1, go_output)
+            rightForwardMotor(1, 0, go_output)
+            rightBackwardMotor(1, 0, go_output)
 
 
     elif left_flag ==1:
-            leftForwardMotor(0, 1, GO_OUTPUT)
-            leftBackwardMotor(1, 0, GO_OUTPUT)
-            rightForwardMotor(1, 0, GO_OUTPUT)
-            rightBackwardMotor(0, 1, GO_OUTPUT)
+            leftForwardMotor(0, 1, go_output)
+            leftBackwardMotor(1, 0, go_output)
+            rightForwardMotor(1, 0, go_output)
+            rightBackwardMotor(0, 1, go_output)
 
     elif right_flag ==1:
-            leftForwardMotor(1, 0, GO_OUTPUT)
-            leftBackwardMotor(0, 1, GO_OUTPUT)
-            rightForwardMotor(0, 1, GO_OUTPUT)
-            rightBackwardMotor(1, 0, GO_OUTPUT)
+            leftForwardMotor(1, 0, go_output)
+            leftBackwardMotor(0, 1, go_output)
+            rightForwardMotor(0, 1, go_output)
+            rightBackwardMotor(1, 0, go_output)
             
     else :
         leftForwardMotor(1, 0, 0)

@@ -125,6 +125,13 @@ def servo():
   servo_cont.move_servo(channel, direction)
   return jsonify({"ok": 1, "angles": servo_cont.get_angles()})
 
+@app.route("/set_params", methods=["POST"])
+def set_params():
+  data = request.get_json(silent=True) or {}
+  go = data.get("go_output", motor_cont.go_output)
+  motor_cont.set_params(go)
+  return jsonify({"ok": 1})
+
 @app.route("/stream.mjpg")
 def stream():
   return Response(
