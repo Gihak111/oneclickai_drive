@@ -169,10 +169,10 @@ def drive(go_flag, left_flag, right_flag, brake_flag, back_flag):
             rightBackwardMotor(1, 0, go_output)
             
     else :
-        leftForwardMotor(1, 0, 0)
-        leftBackwardMotor(1, 0, 0)
-        rightForwardMotor(1, 0, 0)
-        rightBackwardMotor(1, 0, 0)
+        leftForwardMotor(0, 0, 0)
+        leftBackwardMotor(0, 0, 0)
+        rightForwardMotor(0, 0, 0)
+        rightBackwardMotor(0, 0, 0)
 
 if __name__ == '__main__':
     # 직진 5초

@@ -1,5 +1,0 @@
-0 go
-1 left
-2 right
-3 brake
-4 parking
