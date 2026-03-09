@@ -105,13 +105,12 @@ def motor_stop():
 
 # 테스트 코드
 if __name__ == '__main__':
-    # ~ leftForwardMotor(1, 0, 10)  # 전진
-    # ~ leftBackwardMotor(1, 0, 10)  # 전진
-    # ~ rightForwardMotor(1, 0, 20)  # 전진
-    # ~ rightBackwardMotor(1, 0, 20)  # 전진
-    # ~ sleep(10)
-    motor_stop()
-    
+    leftForwardMotor(1, 0, 0)  # 전진
+    leftBackwardMotor(1, 0, 0)  # 전진
+    rightForwardMotor(0, 0, 0)  # 전진
+    rightBackwardMotor(1, 0, 0)  # 전진
+    # ~ motor_stop()
+    sleep(3)
     
     
     # 왼쪽 전방 모터 테스트

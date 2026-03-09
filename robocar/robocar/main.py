@@ -4,7 +4,7 @@ import threading, time
 import util
 util.stop_webservice() # 웹서비스 종료, 재부팅 시 다시 실행됨
 import motor_cont
-import servo_cont
+import arm_cont
 from keyboard_cont import KeyboardController
 from camera_capture import CameraCapture
 from config import MODEL_PATH, CONTROL_LOOP_SLEEP
@@ -28,7 +28,7 @@ key = KeyboardController()
 camera = CameraCapture(key)
 
 # PCA9685 서보 모터 초기화
-servo_cont.init_servos()
+arm_cont.init_servos()
 
 # 메인 루프
 def autonomous_control_loop():
@@ -94,11 +94,14 @@ def autonomous_control_loop():
         # 모터 동작 수행
         motor_cont.drive(key.go_flag, key.left_flag, key.right_flag, key.brake_flag, key.back_flag)
 
+        # 서보 동작 수행
+        if key.servo_channel >= 0:
+            arm_cont.move_servo(key.servo_channel, key.servo_direction)
+
         # FPS 계산 및 출력
         fps = util.calc_fps(t0)
         t0 = time.time() # fps 계산용
         print(f"fps: {fps}")
-
 
 
 

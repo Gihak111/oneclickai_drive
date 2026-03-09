@@ -1,5 +1,4 @@
 from pynput import keyboard
-import servo_cont
 
 
 class KeyboardController:
@@ -13,6 +12,8 @@ class KeyboardController:
         self.save_flag = 0
         self.exit_flag = 0
         self.manual = 1
+        self.servo_channel = -1
+        self.servo_direction = 0
 
     def getkeyboard(self):
         with keyboard.Listener(on_press=self.on_press, on_release=self.on_release) as listener:
@@ -56,19 +57,12 @@ class KeyboardController:
                 self.left_flag=0
                 self.right_flag=0
                 print('Autonomous mode OFF')
-            # 서보 제어 키
-            if key.char.lower() == 'q':
-                servo_cont.move_servo(0, 1)   # 서보0 올리기
-            if key.char.lower() == 'a':
-                servo_cont.move_servo(0, -1)  # 서보0 내리기
-            if key.char.lower() == 'w':
-                servo_cont.move_servo(1, 1)   # 서보1 올리기
-            if key.char.lower() == 's':
-                servo_cont.move_servo(1, -1)  # 서보1 내리기
-            if key.char.lower() == 'e':
-                servo_cont.move_servo(2, 1)   # 서보2 올리기
-            if key.char.lower() == 'd':
-                servo_cont.move_servo(2, -1)  # 서보2 내리기
+            # 서보 제어 키 (플래그 방식)
+            servo_map = {'q':(0,1),'a':(0,-1),'w':(1,1),'s':(1,-1),'e':(2,1),'d':(2,-1)}
+            if key.char.lower() in servo_map:
+                ch, dr = servo_map[key.char.lower()]
+                self.servo_channel = ch
+                self.servo_direction = dr
         except:
             pass
 
@@ -91,6 +85,9 @@ class KeyboardController:
                 self.brake_flag=0
             if key.char.lower() == 'p':
                 self.parking_flag=0
+            if key.char.lower() in ('q','a','w','s','e','d'):
+                self.servo_channel = -1
+                self.servo_direction = 0
             # print('off', self.go_flag, self.left_flag, self.right_flag, self.back_flag,
             #       self.brake_flag, self.save_flag, self.exit_flag, self.manual)
         except:
