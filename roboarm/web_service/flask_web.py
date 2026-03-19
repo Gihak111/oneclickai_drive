@@ -7,7 +7,7 @@ import arm_cont   # 하드웨어 제어
 arm_cont.init_servos()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, max_age=300)
 
 # =================================================================
 # --- 0. 대시보드 UI (A/D, W/S, G/H 반전 적용됨) ---

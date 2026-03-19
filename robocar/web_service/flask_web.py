@@ -10,7 +10,7 @@ import arm_cont as arm_cont
 arm_cont.init_servos()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, max_age=300)
 
 
 HTML_PAGE = """
