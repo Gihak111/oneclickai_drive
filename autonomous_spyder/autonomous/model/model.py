@@ -38,7 +38,7 @@ for img in os.listdir(data_path):
     test.append(img)    
     labels.append(2)  # 라벨 2
     
-# 이미지 데이터를 읽어오고 라벨을 저장:     브레이크
+# 이미지 데이터를 읽어오고 라벨을 저장: 브레이크
 data_path = ".." + os.sep + "image" + os.sep + "brake"
 for img in os.listdir(data_path):
     image = cv2.imread(os.path.join(data_path, img))

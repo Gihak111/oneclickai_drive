@@ -40,10 +40,10 @@ class KeyboardController:
                 self.brake_flag=1
             if key.char.lower() == 'p':
                 self.parking_flag=1
-            if key.char.lower() == 'g':
+            if key.char.lower() == 's':
                 self.save_flag=1
                 print('Save mode ON')
-            if key.char.lower() == 'f':
+            if key.char.lower() == 'a':
                 self.save_flag=0
                 print('Save mode OFF')
             if key.char.lower() == 'z':
