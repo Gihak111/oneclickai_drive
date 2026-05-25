@@ -1,0 +1,23 @@
+[Unit]
+Description=Download cert/key from R2 before Caddy starts
+Wants=network-online.target
+After=network-online.target
+Before=caddy.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/home/pi/
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/usr/bin/python3 -u /home/pi/settings/download_certKey.py
+
+ExecStartPost=/usr/bin/chown root:caddy /etc/caddy/certs/auto.oneclickai.work/cert.pem /etc/caddy/certs/auto.oneclickai.work/key.pem
+ExecStartPost=/usr/bin/chmod 640 /etc/caddy/certs/auto.oneclickai.work/cert.pem /etc/caddy/certs/auto.oneclickai.work/key.pem
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=caddy.service

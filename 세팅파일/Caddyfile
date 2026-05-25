@@ -1,0 +1,5 @@
+auto.oneclickai.work {
+    tls /etc/caddy/certs/auto.oneclickai.work/cert.pem /etc/caddy/certs/auto.oneclickai.work/key.pem
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}

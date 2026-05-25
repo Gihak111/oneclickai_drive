@@ -1,0 +1,78 @@
+# raspberrypi5 이미지
+trixie 버전 정보 13.5
+
+## 리눅스 6.1롤백 (이제는 안해도 됨)
+sudo rpi-update ec8e8136d773de83e313aaf983e664079cce2815
+
+# 커널 버전 락 (apt upgrade 해도 변경 안되도록)
+sudo apt-mark hold raspberrypi-kernel
+sudo apt-mark hold raspberrypi-bootloader
+sudo apt-mark hold libraspberrypi0 libraspberrypi-bin libraspberrypi-dev
+
+
+
+
+
+# 기본 apt 업데이트
+sudo apt update
+sudo apt upgrade
+
+# ip 변경
+ipv4 192.168.137.xx
+넷마스크 24
+게이트웨어 192.168.137.1
+
+# 한글 설정
+sudo apt install ibus ibus-hangul
+sudo apt install fonts-nanum fonts-unfonts-core
+
+# VNC update
+sudo apt-get install realvnc-vnc-server
+
+# rpi gpio
+sudo apt install python3-rpi-lgpio
+
+# SSH, VNC 설정 변경
+시작 - Preferences - Recommended Software - Raspberry Pi Configuration - Interfaces
+여기서 SSH, VNC 변경 
+
+# 이후 재부팅
+sudo reboot
+
+## 패키지 설치
+pip install tensorflow flask pynput opencv-python --break-system-packages
+
+
+
+
+# 서보관련 hardware pwm
+sudo nano /boot/firmware/config.txt
+# 그리고 아래 [all] 밑에 한 줄만 추가:
+dtoverlay=pwm,pin=18,func=2
+
+# 파일 추가 service
+# pwm18.service 파일을 /etc/systemd/system로 이동
+# pwm18_prepare.sh 파일을 /home/pi/settings로 이동 (폴더 새로 만들어야함)
+
+# 터미널 창에
+systemctl enable --now pwm18.service
+
+
+
+## 웹서비스 등록
+# caddy 설치
+sudo apt install -y caddy
+sudo install -d -o root -g caddy -m 750 /etc/caddy/certs/auto.oneclickai.work
+
+# caddy 권한 설정
+sudo usermod -aG caddy pi
+# 재부팅
+ 
+# Caddyfile /etc/caddy 폴더로 이동
+# 서비스 파일, python 파일 이동
+# 서비스 시작
+systemctl enable --now autocert.service
+
+# 웹 자동화
+# 파일이동 autoweb.desktop 파일은 여기로 /home/pi/.config/autostart/
+

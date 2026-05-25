@@ -1,0 +1,11 @@
+[Unit]
+Description=Prepare GPIO18 PWM for servo
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/pi/settings/pwm18_prepare.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

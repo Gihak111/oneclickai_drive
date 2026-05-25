@@ -1,43 +1,33 @@
-import ctypes
+from pathlib import Path
 import time
 
-# initialize
-lib = None
+PWM_PATH_FILE = Path("/run/pwm18_path")
+PERIOD_NS = 20_000_000
+
+def _pwm():
+    if not PWM_PATH_FILE.exists():
+        raise RuntimeError("Run: sudo systemctl restart pwm18.service")
+    return Path(PWM_PATH_FILE.read_text().strip())
+
+def _write(name, value):
+    (_pwm() / name).write_text(str(value))
 
 def init():
-    global lib
-    # Load the shared library into ctypes
-    lib = ctypes.CDLL('./servo.so')
-    lib.initializePWM(18)
+    _write("period", PERIOD_NS)
+    _write("duty_cycle", 1_500_000)
+    _write("enable", 1)
 
-# Set duty
-def set_deg(new_deg):
-    global lib
-    duty = calc_duty_from_deg(new_deg)
-    lib.setPWMDuty(int(duty))
+def set_deg(angle):
+    angle = max(0, min(180, angle))
+    pulse_us = 500 + (angle / 180) * 2000
+    _write("duty_cycle", int(pulse_us * 1000))
 
-# calc duty
-def calc_duty_from_deg(deg):
-        deg = min(175, deg)
-        deg = max(5, deg)
+def stop():
+    _write("enable", 0)
 
-        min_duty = 480
-        max_duty = 2600
-
-        min_deg = 0
-        max_deg = 180
-
-        duty = (deg - min_deg) / (max_deg - min_deg) * (max_duty-min_duty) + min_duty
-        return duty
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     init()
-    print(lib)
-    set_deg(45)
-    time.sleep(1)
-    set_deg(60)
-    time.sleep(1)
-    set_deg(75)
-    time.sleep(1)
-    set_deg(90)
-    time.sleep(1)    
+    for a in [0, 90, 180, 90]:
+        set_deg(a)
+        time.sleep(1)
+    stop()

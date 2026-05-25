@@ -1,0 +1,10 @@
+# 이 파일은 ~/.config/autostart 폴더에 넣어두면 됨
+# 필요시 autoweb.sh의 위치 변경
+
+[Desktop Entry]
+Type=Application
+Name=My Python App
+Comment=Start my Python app after boot
+Exec=lxterminal -e bash -lc "/home/pi/Desktop/web_service/autoweb.sh"
+Terminal=false
+X-GNOME-Autostart-enabled=true

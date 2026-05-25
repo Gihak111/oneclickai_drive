@@ -3,7 +3,6 @@ import numpy as np
 import threading, time
 import subprocess
 import util
-util.stop_webservice() # 웹서비스 종료, 재부팅 시 다시 실행됨
 import motor_cont
 from keyboard_cont import KeyboardController
 from camera_capture import CameraCapture
