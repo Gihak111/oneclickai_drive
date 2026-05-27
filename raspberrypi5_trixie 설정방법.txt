@@ -34,7 +34,7 @@ sudo apt install python3-rpi-lgpio
 
 # SSH, VNC 설정 변경
 시작 - Preferences - Recommended Software - Raspberry Pi Configuration - Interfaces
-여기서 SSH, VNC 변경 
+여기서 SSH, VNC 서용하도록 변경 
 
 # 이후 재부팅
 sudo reboot
@@ -45,7 +45,7 @@ sudo reboot
 ## 파이썬 패키지 설치 (파이썬 3.13 기준)
 pip install scikit-learn tensorflow flask pynput opencv-python --break-system-packages
 
-# 특정 모듈 강제 업그레이드 (flatbuffers 강제로 tensorflow에 맞게 버전업을 해야함)
+# 특정 모듈 강제 업그레이드 (flatbuffers 오래된 버전이 설치되는 문제가 있음. 강제로 tensorflow에 맞게 버전업을 해야함)
 python3.13 -m pip install --user --break-system-packages \
   --no-cache-dir --force-reinstall --no-deps \
   --index-url https://pypi.org/simple \
