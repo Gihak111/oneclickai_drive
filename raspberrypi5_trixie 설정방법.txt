@@ -42,7 +42,7 @@ sudo reboot
 
 
 
-## 파이썬 패키지 설치
+## 파이썬 패키지 설치 (파이썬 3.13 기준)
 pip install scikit-learn tensorflow flask pynput opencv-python --break-system-packages
 
 # 특정 모듈 강제 업그레이드 (flatbuffers 강제로 tensorflow에 맞게 버전업을 해야함)
