@@ -5,6 +5,6 @@
 Type=Application
 Name=My Python App
 Comment=Start my Python app after boot
-Exec=lxterminal -e bash -lc "/home/pi/Desktop/web_service/autoweb.sh"
+Exec=lxterminal -e bash -lc "bash /home/pi/Desktop/web_service/autoweb.sh"
 Terminal=false
 X-GNOME-Autostart-enabled=true
