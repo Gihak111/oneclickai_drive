@@ -1,10 +1,10 @@
 # raspberrypi5 이미지
+2026.5월 기준 최신버전 
 trixie 버전 정보 13.5
+설정 파일은 "설정 파일" 폴더 참고
 
-## 리눅스 6.1롤백 (이제는 안해도 됨)
-sudo rpi-update ec8e8136d773de83e313aaf983e664079cce2815
 
-# 커널 버전 락 (apt upgrade 해도 변경 안되도록)
+# 커널 버전 락 (apt upgrade 해도 변경 안되도록, 꼭 하지 않아도 됨, 그러나 이후 apt update시 펌웨어 터지는걸 방지)
 sudo apt-mark hold raspberrypi-kernel
 sudo apt-mark hold raspberrypi-bootloader
 sudo apt-mark hold libraspberrypi0 libraspberrypi-bin libraspberrypi-dev
@@ -17,8 +17,8 @@ sudo apt-mark hold libraspberrypi0 libraspberrypi-bin libraspberrypi-dev
 sudo apt update
 sudo apt upgrade
 
-# ip 변경
-ipv4 192.168.137.xx
+# ip 변경 (18번으로 고정 아이피 설정, 핫스팟 기준)
+ipv4 192.168.137.18
 넷마스크 24
 게이트웨어 192.168.137.1
 
@@ -39,13 +39,22 @@ sudo apt install python3-rpi-lgpio
 # 이후 재부팅
 sudo reboot
 
-## 패키지 설치
-pip install tensorflow flask pynput opencv-python --break-system-packages
 
 
 
+## 파이썬 패키지 설치
+pip install scikit-learn tensorflow flask pynput opencv-python --break-system-packages
 
-# 서보관련 hardware pwm
+# 특정 모듈 강제 업그레이드 (flatbuffers 강제로 tensorflow에 맞게 버전업을 해야함)
+python3.13 -m pip install --user --break-system-packages \
+  --no-cache-dir --force-reinstall --no-deps \
+  --index-url https://pypi.org/simple \
+  flatbuffers==24.3.25
+
+
+
+## 서보관련 hardware pwm 사용하도록 (서보 안쓰면 상관 없음)
+#단, os 버전이 너무 낮으면 동작 안할수도 있음. (trixie에서는 확실히 동작)
 sudo nano /boot/firmware/config.txt
 # 그리고 아래 [all] 밑에 한 줄만 추가:
 dtoverlay=pwm,pin=18,func=2
@@ -59,7 +68,8 @@ systemctl enable --now pwm18.service
 
 
 
-## 웹서비스 등록
+## 웹서비스 등록 (웹 구동시 필요. 웹 구동 안하면 안해도 됨 아이피 꼭 위에 설정대로 고정해야함)
+
 # caddy 설치
 sudo apt install -y caddy
 sudo install -d -o root -g caddy -m 750 /etc/caddy/certs/auto.oneclickai.work
@@ -69,10 +79,11 @@ sudo usermod -aG caddy pi
 # 재부팅
  
 # Caddyfile /etc/caddy 폴더로 이동
-# 서비스 파일, python 파일 이동
+# 서비스 파일, /etc/systemd/system로 이동
 # 서비스 시작
 systemctl enable --now autocert.service
 
 # 웹 자동화
-# 파일이동 autoweb.desktop 파일은 여기로 /home/pi/.config/autostart/
+# 파일이동 autoweb.desktop 파일은 여기로 이동
+/home/pi/.config/autostart/
 
