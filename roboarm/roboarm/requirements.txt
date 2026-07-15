@@ -1,0 +1,5 @@
+# PCA9685 서보 제어용 (추가 설치 필요)
+adafruit-circuitpython-servokit
+
+# 키보드 입력 처리용 (추가 설치 필요)
+pynput
