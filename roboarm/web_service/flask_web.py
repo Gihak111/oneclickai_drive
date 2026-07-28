@@ -129,8 +129,14 @@ def ping():
 @app.route("/set_params", methods=["POST"])
 def set_params():
     data = request.get_json(silent=True) or {}
-    step = data.get("step", arm_cont.ANGLE_STEP)
-    arm_cont.ANGLE_STEP = int(step)
+    if "step" in data:
+        try:
+            arm_cont.ANGLE_STEP = int(data["step"])
+        except (TypeError, ValueError):
+            pass
+    # 슬루 필터 최대 회전 속도(도/초) — 프론트엔드 speed 슬라이더가 여기로 반영된다
+    if "speed_dps" in data:
+        arm_cont.set_max_speed(data["speed_dps"])
     return jsonify({"ok": 1})
 
 @app.route("/stream.mjpg")
