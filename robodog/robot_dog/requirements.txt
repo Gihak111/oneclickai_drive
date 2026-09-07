@@ -1,0 +1,17 @@
+# ============================================================================
+# 라즈베리파이(실제 로봇)에서는 이 파일이 필요 없습니다 — 가상환경/pip 사용 안 함!
+#
+# 모든 의존성은 apt 시스템 패키지로 설치합니다 (README Step 2):
+#   sudo apt install -y python3-flask python3-opencv python3-numpy \
+#                       python3-psutil python3-serial python3-netifaces
+#   (picamera2는 Raspberry Pi OS에 기본 포함)
+#
+# 아래 목록은 "윈도우/리눅스 PC에서 서버를 개발·테스트할 때"의 pip 폴백 전용입니다.
+#   pip install -r robot_dog/requirements.txt
+# ============================================================================
+flask
+numpy
+opencv-python
+psutil
+pyserial
+# netifaces는 라즈베리파이 전용(IP 표시용, 없어도 동작) — PC에서는 설치 생략 가능

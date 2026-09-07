@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>동작 만들기</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
+  h2 { margin: 0 0 8px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .muted { color: #777; font-size: 12px; }
+  fieldset { border: 1px solid #ccc; margin-bottom: 10px; }
+  legend { font-weight: bold; }
+  .cols { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .left { width: 260px; }
+  .right { flex: 1; min-width: 320px; }
+  #status-msg { color: green; min-height: 20px; margin: 6px 0; font-size: 14px; }
+  #status-msg.err { color: #c00; }
+  .motion-item { display: flex; justify-content: space-between; align-items: center;
+                 border: 1px solid #ddd; padding: 6px 8px; margin-bottom: 4px; cursor: pointer; font-size: 14px; }
+  .motion-item.active { background: #eef; border-color: #88a; }
+  .motion-item small { color: #777; }
+  .motion-item .del { color: #c00; padding: 0 4px; font-weight: bold; }
+  .kf-row { display: flex; gap: 8px; align-items: center; border: 1px solid #ddd; padding: 4px 8px;
+            margin-bottom: 4px; cursor: pointer; font-size: 14px; flex-wrap: wrap; }
+  .kf-row.active { background: #eef; border-color: #88a; }
+  .kf-row input[type=number] { width: 64px; }
+  .kf-idx { font-weight: bold; width: 26px; }
+  .kf-note { font-size: 12px; color: #555; margin: 4px 0; }
+  .servo-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+  .leg-group { border: 1px solid #ddd; padding: 8px; min-width: 220px; }
+  .leg-group h4 { margin: 0 0 6px; font-size: 14px; }
+  .servo-row label { display: block; font-size: 13px; }
+  .servo-row input[type=range] { width: 100%; }
+  .servo-val { font-weight: bold; }
+  .bind-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; font-size: 14px; }
+  .bind-row span { width: 70px; }
+  .bind-row select { flex: 1; }
+  ul.tips { margin: 4px 0 8px 18px; padding: 0; font-size: 12px; color: #666; }
+</style>
+</head>
+<body>
+<h2>동작 만들기</h2>
+<div class="row"><a href="/">← 조종 화면</a> | <a href="/calibration">캘리브레이션</a></div>
+<p class="muted" style="font-size:13px; margin-bottom:4px">
+  동작 = 키프레임(시간 + 12개 서보 각도)의 나열. <b>토크 끄기</b> → 손으로 자세 잡기 → <b>현재 자세 캡처</b>를
+  반복해 키프레임을 쌓고, 시간을 조정한 뒤 <b>토크 켜기</b> → <b>▶ 재생</b>으로 확인하세요.
+  마음에 들면 <b>저장</b>하고, 왼쪽에서 화살표 키에 할당하면 조종 화면에서 그 키로 실행됩니다.
+</p>
+<ul class="tips">
+  <li>토크를 끄면 로봇에 힘이 빠져 주저앉습니다. <b>손으로 몸통을 받친 상태</b>에서 끄세요.</li>
+  <li>재생을 시작하면 현재 자세에서 첫 키프레임까지 최소 0.6초에 걸쳐 부드럽게 이동한 뒤 동작을 시작합니다.</li>
+  <li>걷기처럼 계속 이어지는 동작은 <b>반복 재생</b>을 켜세요. 마지막 키프레임에서 첫 키프레임으로 돌아가 반복합니다.</li>
+  <li>일반(비반복) 동작은 끝나면 마지막 키프레임 자세를 유지합니다. 다시 서게 하려면 <b>■ 정지</b> 또는 조종 화면의 4(기립).</li>
+  <li>슬라이더 라이브 미리보기를 켜면 슬라이더를 움직인 서보가 바로 움직입니다 (토크가 자동으로 켜짐).</li>
+</ul>
+<div id="status-msg"></div>
+
+<div class="cols">
+  <div class="left">
+    <fieldset>
+      <legend>동작 목록</legend>
+      <div id="list-container">불러오는 중...</div>
+      <div class="row">
+        <button onclick="newMotion()">+ 새 동작</button>
+        <button onclick="refreshList()">새로고침</button>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>화살표 키 할당</legend>
+      <div id="bindings-box">불러오는 중...</div>
+      <div class="muted">기본 (보행) = 원래대로 걷기. 반복 동작은 누르는 동안 재생, 일반 동작은 한 번 눌러 재생.</div>
+    </fieldset>
+  </div>
+
+  <div class="right">
+    <fieldset>
+      <legend>편집</legend>
+      <div class="row">
+        <label>이름 <input type="text" id="motion-name" placeholder="동작 이름" maxlength="40" style="width:140px"></label>
+        <label><input type="checkbox" id="loop-chk" onchange="renderKeyframes()"> 반복 재생</label>
+        <button onclick="saveMotion()">저장</button>
+        <button onclick="playMotion()">▶ 재생</button>
+        <button onclick="stopMotion()">■ 정지</button>
+        <span id="play-status" class="muted"></span>
+      </div>
+      <div class="row">
+        <button onclick="setTorque(false)">토크 끄기</button>
+        <button onclick="setTorque(true)">토크 켜기</button>
+        <button onclick="captureKeyframe()">현재 자세 캡처 (새 키프레임)</button>
+        <label><input type="checkbox" id="live-chk"> 슬라이더 라이브 미리보기</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>키프레임 타임라인</legend>
+      <div id="kf-container"></div>
+      <div class="row"><button onclick="addKeyframe()">+ 키프레임 추가 (선택 복제)</button></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>서보 각도 (선택된 키프레임)</legend>
+      <div class="servo-grid" id="servo-grid"></div>
+    </fieldset>
+  </div>
+</div>
+
+<script>
+const SERVO_NAMES = {{ servo_names | tojson }};
+const MIN_GAP = 0.05;        // 키프레임 최소 시간 간격 (초) — 서버 config.MOTION_MIN_SEGMENT_MS와 동일
+const ENTRY_MIN = 0.6;       // 진입 최소 시간 (초) — 서버 config.MOTION_DEFAULT_ENTRY_MS와 동일
+// 다리별 그룹 (서보 인덱스): 캘리브레이션 페이지와 동일한 배치
+const LEG_GROUPS = [
+  { title: "앞왼쪽 (FL)", servos: [2, 0, 1] },
+  { title: "앞오른쪽 (FR)", servos: [3, 4, 5] },
+  { title: "뒤왼쪽 (BL)", servos: [8, 6, 7] },
+  { title: "뒤오른쪽 (BR)", servos: [9, 10, 11] },
+];
+
+// 편집 중인 동작 상태
+let motion = { name: "", loop: false, keyframes: [] };
+let selectedKf = -1;
+let currentLoaded = null;   // 목록에서 불러온 동작 이름
+let previewTimer = null;
+
+function postJson(url, data) {
+  return fetch(url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {})
+  });
+}
+
+function showStatus(msg, isError) {
+  const el = document.getElementById('status-msg');
+  el.innerText = msg;
+  el.className = isError ? 'err' : '';
+  setTimeout(() => { if (el.innerText === msg) el.innerText = ""; }, isError ? 8000 : 4000);
+}
+
+// ==================== 동작 목록 ====================
+
+function refreshList() {
+  fetch('/api/motions').then(r => r.json()).then(data => {
+    const box = document.getElementById('list-container');
+    renderBindings(data.motions.map(m => m.name));
+    if (!data.motions.length) {
+      box.innerHTML = '<div class="muted">저장된 동작이 없습니다. [새 동작]으로 만들어 보세요.</div>';
+      return;
+    }
+    box.innerHTML = '';
+    data.motions.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'motion-item' + (m.name === currentLoaded ? ' active' : '');
+      div.innerHTML = `<span>${m.name}<br><small>${m.keyframes}개 키프레임 · ${m.duration.toFixed(1)}초${m.loop ? ' · 반복' : ''}</small></span>` +
+        `<span class="del" title="삭제">✕</span>`;
+      div.querySelector('.del').onclick = (e) => { e.stopPropagation(); deleteMotion(m.name); };
+      div.onclick = () => loadMotion(m.name);
+      box.appendChild(div);
+    });
+  }).catch(() => showStatus('목록을 불러오지 못했습니다.', true));
+}
+
+// ==================== 화살표 키 할당 ====================
+
+const ARROW_LABELS = { arrowup: '↑ 앞', arrowdown: '↓ 뒤', arrowleft: '← 왼쪽', arrowright: '→ 오른쪽' };
+let keyBindings = {};
+
+function renderBindings(motionNames) {
+  fetch('/api/keybindings').then(r => r.json()).then(b => {
+    keyBindings = b;
+    const box = document.getElementById('bindings-box');
+    box.innerHTML = '';
+    Object.keys(ARROW_LABELS).forEach(k => {
+      const row = document.createElement('div');
+      row.className = 'bind-row';
+      const label = document.createElement('span');
+      label.innerText = ARROW_LABELS[k];
+      const sel = document.createElement('select');
+      sel.appendChild(new Option('기본 (보행)', 'default'));
+      motionNames.forEach(n => sel.appendChild(new Option(n, n)));
+      sel.value = (keyBindings[k] === 'default' || motionNames.includes(keyBindings[k]))
+        ? keyBindings[k] : 'default';
+      sel.onchange = () => {
+        const prev = keyBindings[k];
+        keyBindings[k] = sel.value;
+        const payload = {};
+        payload[k] = sel.value;
+        postJson('/api/keybindings', payload).then(r => r.json()).then(d => {
+          if (d.error) { keyBindings[k] = prev; sel.value = prev; showStatus(d.error, true); return; }
+          showStatus('키 할당 저장: ' + ARROW_LABELS[k] + ' → ' + (sel.value === 'default' ? '기본 보행' : sel.value));
+        }).catch(() => showStatus('키 할당 저장 실패', true));
+      };
+      row.appendChild(label);
+      row.appendChild(sel);
+      box.appendChild(row);
+    });
+  }).catch(() => { });
+}
+
+function newMotion() {
+  motion = { name: "새 동작", loop: false, keyframes: [] };
+  currentLoaded = null;
+  selectedKf = -1;
+  document.getElementById('motion-name').value = motion.name;
+  document.getElementById('loop-chk').checked = false;
+  renderKeyframes();
+  renderSliders();
+  showStatus('새 동작을 시작합니다. [현재 자세 캡처]로 첫 키프레임을 만드세요.');
+}
+
+function loadMotion(name) {
+  fetch('/api/motions/' + encodeURIComponent(name)).then(r => r.json()).then(data => {
+    if (data.error) throw new Error(data.error);
+    if (!Array.isArray(data.keyframes)) throw new Error('키프레임 형식 오류');
+    motion = { name: data.name || name, loop: !!data.loop, keyframes: data.keyframes };
+    currentLoaded = name;
+    selectedKf = motion.keyframes.length ? 0 : -1;
+    document.getElementById('motion-name').value = name;
+    document.getElementById('loop-chk').checked = motion.loop;
+    renderKeyframes();
+    renderSliders();
+    refreshList();
+    showStatus(`"${name}" 불러옴.`);
+  }).catch(e => showStatus('동작을 불러오지 못했습니다. ' + (e.message || ''), true));
+}
+
+// 재생/저장 전에 브라우저에서 먼저 검사해 이유를 바로 알려준다 (서버도 같은 규칙으로 거부한다)
+function checkMotion(loop) {
+  if (!motion.keyframes.length) return '키프레임이 1개 이상 필요합니다.';
+  const sorted = motion.keyframes.slice().sort((a, b) => a.time - b.time);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i + 1].time - sorted[i].time < MIN_GAP - 1e-9) {
+      return `키프레임 #${i + 1}(${sorted[i].time}초)과 #${i + 2}(${sorted[i + 1].time}초)의 시간이 같거나 너무 가깝습니다. 최소 ${MIN_GAP}초 이상 차이 나게 시간을 바꾸세요.`;
+    }
+  }
+  if (loop && motion.keyframes.length < 2) return '반복 재생은 키프레임이 2개 이상 필요합니다. (반복 체크를 끄거나 키프레임을 추가하세요)';
+  return null;
+}
+
+function saveMotion() {
+  const name = document.getElementById('motion-name').value.trim();
+  if (!name) { showStatus('동작 이름을 입력하세요.', true); return; }
+  motion.loop = document.getElementById('loop-chk').checked;
+  const err = checkMotion(motion.loop);
+  if (err) { showStatus(err, true); return; }
+  motion.name = name;
+  postJson('/api/motions/' + encodeURIComponent(name), motion).then(r => r.json()).then(data => {
+    if (data.error) { showStatus(data.error, true); return; }
+    motion = data.motion;
+    currentLoaded = motion.name;
+    document.getElementById('motion-name').value = motion.name;
+    renderKeyframes();
+    refreshList();
+    showStatus(`"${motion.name}" 저장 완료! 왼쪽 [화살표 키 할당]에서 키에 지정할 수 있습니다.`);
+  }).catch(() => showStatus('저장 실패.', true));
+}
+
+function deleteMotion(name) {
+  if (!confirm(`"${name}" 동작을 삭제할까요?`)) return;
+  fetch('/api/motions/' + encodeURIComponent(name), { method: 'DELETE' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { showStatus(d.error, true); return; }
+      if (currentLoaded === name) newMotion();
+      refreshList();
+      showStatus('삭제되었습니다.' + (d.unbound && d.unbound.length ? ' (이 동작에 걸려 있던 화살표 할당은 기본 보행으로 되돌렸습니다)' : ''));
+    })
+    .catch(() => showStatus('삭제 실패.', true));
+}
+
+// ==================== 재생 ====================
+
+function playMotion() {
+  // 편집 중인 내용(저장 안 한 변경 포함)을 그대로 재생한다.
+  motion.loop = document.getElementById('loop-chk').checked;
+  const err = checkMotion(motion.loop);
+  if (err) { showStatus(err, true); return; }
+  motion.name = document.getElementById('motion-name').value.trim() || motion.name || '미리보기';
+  // hold: 반복 재생은 이 페이지가 keep-alive를 보내는 동안만 계속된다 (탭을 닫으면 3초 뒤 정지)
+  postJson('/api/motion/play', { motion: motion, loop: motion.loop, hold: true })
+    .then(r => r.json()).then(data => {
+      if (data.error) showStatus(data.error, true);
+      else showStatus('재생 시작! (편집 중인 내용 그대로' + (motion.loop ? ', 반복 — 멈추려면 ■ 정지' : '') + ')');
+    }).catch(() => showStatus('재생 요청 실패.', true));
+}
+
+function stopMotion() {
+  postJson('/api/motion/stop', {}).then(() => showStatus('정지. 기립 자세로 복귀합니다.'))
+    .catch(() => showStatus('정지 요청 실패.', true));
+}
+
+function pollStatus() {
+  fetch('/api/motion/status').then(r => r.json()).then(s => {
+    const el = document.getElementById('play-status');
+    let txt = s.playing ? `재생 중: ${s.motion}${s.loop ? ' (반복)' : ''}` : '';
+    if (!s.hardware) txt += (txt ? ' · ' : '') + '로봇 미연결';
+    el.innerText = txt;
+  }).catch(() => { });
+}
+setInterval(pollStatus, 1000);
+
+// keep-alive: 이 페이지가 열려 있는 동안 반복 재생을 유지한다.
+// 탭을 닫거나 다른 페이지로 가면 서버가 3초(config.HOLD_TIMEOUT) 뒤 동작을 멈추고 기립시킨다.
+setInterval(() => { postJson('/api/hold', { motion: true }).catch(() => { }); }, 1000);
+
+// ==================== 토크 / 자세 캡처 ====================
+
+function setTorque(on) {
+  postJson('/api/motion/torque', { on: on })
+    .then(() => showStatus(on ? '토크 켬 (자세 고정)' : '토크 끔 — 손으로 자세를 잡아보세요. (몸통을 받쳐 주세요)'))
+    .catch(() => showStatus('요청 실패.', true));
+}
+
+function pushKeyframe(angles) {
+  const lastTime = motion.keyframes.length ?
+    motion.keyframes[motion.keyframes.length - 1].time : -0.5;
+  motion.keyframes.push({
+    time: Math.round((lastTime + 0.5) * 10) / 10,
+    angles: angles
+  });
+  selectedKf = motion.keyframes.length - 1;
+  renderKeyframes();
+  renderSliders();
+}
+
+function captureKeyframe() {
+  fetch('/api/motion/current_pose?source=present').then(r => r.json()).then(data => {
+    if (data.error) { showStatus(data.error, true); return; }
+    pushKeyframe(data.angles.map(a => Math.round(a * 10) / 10));
+    showStatus('현재 자세를 키프레임 #' + motion.keyframes.length + '(으)로 캡처했습니다. 시간(초)을 확인하세요.');
+  }).catch(() => showStatus('자세 캡처 실패.', true));
+}
+
+// ==================== 키프레임 편집 ====================
+
+function addKeyframe() {
+  // 빈 동작의 첫 키프레임은 로봇의 "현재 자세"로 시작한다.
+  // (기본값 90도로 시작하면 미리보기/재생 시 모든 모터가 한꺼번에 크게 움직임)
+  if (!motion.keyframes.length) {
+    fetch('/api/motion/current_pose?source=present').then(r => r.json()).then(data => {
+      if (data.error && data.reason === 'servo') {
+        // 일부 서보 무응답: 틀린 각도로 키프레임을 만들지 않고 원인을 보여준다
+        showStatus(data.error, true);
+        return;
+      }
+      if (data.error) throw new Error(data.error);
+      pushKeyframe(data.angles.map(a => Math.round(a * 10) / 10));
+      showStatus('로봇의 현재 자세로 첫 키프레임을 만들었습니다.');
+    }).catch(() => {
+      pushKeyframe(new Array(SERVO_NAMES.length).fill(90));
+      showStatus('로봇 미연결: 90도 기본값으로 생성됨 (미리보기 시 전체 모터가 크게 움직일 수 있음)', true);
+    });
+    return;
+  }
+  const base = (selectedKf >= 0) ? motion.keyframes[selectedKf]
+    : motion.keyframes[motion.keyframes.length - 1];
+  pushKeyframe(base.angles.slice());
+}
+
+function removeKeyframe(i) {
+  motion.keyframes.splice(i, 1);
+  if (selectedKf >= motion.keyframes.length) selectedKf = motion.keyframes.length - 1;
+  renderKeyframes();
+  renderSliders();
+}
+
+function updateKfFromPose(i) {
+  fetch('/api/motion/current_pose?source=present').then(r => r.json()).then(data => {
+    if (data.error) { showStatus(data.error, true); return; }
+    motion.keyframes[i].angles = data.angles.map(a => Math.round(a * 10) / 10);
+    selectedKf = i;
+    renderSliders();
+    showStatus(`키프레임 #${i + 1}을 현재 자세로 갱신했습니다.`);
+  }).catch(() => showStatus('자세 읽기 실패.', true));
+}
+
+function previewKf(i) {
+  selectedKf = i;
+  renderKeyframes();
+  renderSliders();
+  postJson('/api/motion/pose', { angles: motion.keyframes[i].angles, duration_ms: 600 })
+    .catch(() => showStatus('미리보기 요청 실패.', true));
+  showStatus(`키프레임 #${i + 1} 자세로 이동. (12개 서보가 모두 움직입니다)`);
+}
+
+function sortKeyframes() {
+  const sel = motion.keyframes[selectedKf];
+  motion.keyframes.sort((a, b) => a.time - b.time);
+  selectedKf = motion.keyframes.indexOf(sel);
+}
+
+function renderKeyframes() {
+  const box = document.getElementById('kf-container');
+  box.innerHTML = '';
+  if (!motion.keyframes.length) {
+    box.innerHTML = '<div class="muted">키프레임이 없습니다. [현재 자세 캡처] 또는 [키프레임 추가]로 시작하세요.</div>';
+    return;
+  }
+  const loop = document.getElementById('loop-chk').checked;
+  const kfs = motion.keyframes;
+  const entry = Math.max(ENTRY_MIN, kfs[0].time);
+  const note0 = document.createElement('div');
+  note0.className = 'kf-note';
+  note0.innerText = `시작: 현재 자세 → #1 (${entry.toFixed(2)}초에 걸쳐 이동)`;
+  box.appendChild(note0);
+
+  kfs.forEach((kf, i) => {
+    const row = document.createElement('div');
+    row.className = 'kf-row' + (i === selectedKf ? ' active' : '');
+    const seg = i > 0 ? ` <span class="muted">(#${i}에서 ${(kf.time - kfs[i - 1].time).toFixed(2)}초)</span>` : '';
+    row.innerHTML =
+      `<span class="kf-idx">#${i + 1}</span>` +
+      `<span>시간</span><input type="number" step="0.1" min="0" value="${kf.time}">초${seg}` +
+      `<button>미리보기</button>` +
+      `<button>현재 자세로</button>` +
+      `<button style="color:#c00">✕</button>`;
+    row.onclick = () => { selectedKf = i; renderKeyframes(); renderSliders(); };
+    const timeInput = row.querySelector('input');
+    timeInput.onclick = (e) => e.stopPropagation();
+    timeInput.onchange = (e) => {
+      kf.time = Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100) / 100);
+      sortKeyframes();
+      renderKeyframes();
+      const err = checkMotion(document.getElementById('loop-chk').checked);
+      if (err) showStatus(err, true);
+    };
+    const btns = row.querySelectorAll('button');
+    btns[0].onclick = (e) => { e.stopPropagation(); previewKf(i); };
+    btns[1].onclick = (e) => { e.stopPropagation(); updateKfFromPose(i); };
+    btns[2].onclick = (e) => { e.stopPropagation(); removeKeyframe(i); };
+    box.appendChild(row);
+  });
+
+  const note1 = document.createElement('div');
+  note1.className = 'kf-note';
+  if (loop) {
+    if (kfs.length >= 2) {
+      const back = kfs[0].time > 0 ? kfs[0].time : (kfs[kfs.length - 1].time - kfs[kfs.length - 2].time);
+      note1.innerText = `반복: #${kfs.length} → #1 로 ${Math.max(MIN_GAP, back).toFixed(2)}초에 걸쳐 돌아간 뒤 반복 ` +
+        `(#1의 시간이 0이면 마지막 구간과 같은 시간, 0보다 크면 그 값)`;
+    } else {
+      note1.innerText = '반복 재생은 키프레임이 2개 이상 필요합니다.';
+      note1.style.color = '#c00';
+    }
+  } else {
+    note1.innerText = `끝: #${kfs.length} 자세를 유지합니다. (다시 서게 하려면 ■ 정지 또는 조종 화면의 4)`;
+  }
+  box.appendChild(note1);
+}
+
+// ==================== 서보 슬라이더 ====================
+
+// 라이브 미리보기: "바꾼 서보만" 로봇에 전송한다.
+// (키프레임 전체 12개를 보내면 캡처하지 않은 나머지 모터까지 한꺼번에
+//  움직여 로봇이 주저앉는 사고가 나므로, 반드시 부분 포즈로 보낸다)
+let previewChanged = new Set();
+function schedulePreview(servoIdx) {
+  if (!document.getElementById('live-chk').checked) return;
+  if (selectedKf < 0) return;
+  previewChanged.add(servoIdx);
+  if (previewTimer) return;
+  previewTimer = setTimeout(() => {
+    previewTimer = null;
+    // 디바운스 대기 중에 키프레임이 삭제/변경됐을 수 있으므로 재확인
+    if (selectedKf < 0 || !motion.keyframes[selectedKf]) { previewChanged.clear(); return; }
+    const servos = {};
+    previewChanged.forEach(si => { servos[si] = motion.keyframes[selectedKf].angles[si]; });
+    previewChanged.clear();
+    if (!Object.keys(servos).length) return;
+    postJson('/api/motion/pose', { servos: servos }).catch(() => { });
+  }, 120);
+}
+
+function renderSliders() {
+  const grid = document.getElementById('servo-grid');
+  grid.innerHTML = '';
+  const kf = selectedKf >= 0 ? motion.keyframes[selectedKf] : null;
+
+  LEG_GROUPS.forEach(group => {
+    const div = document.createElement('div');
+    div.className = 'leg-group';
+    div.innerHTML = `<h4>${group.title}</h4>`;
+    group.servos.forEach(si => {
+      const val = kf ? kf.angles[si] : 90;
+      const row = document.createElement('div');
+      row.className = 'servo-row';
+      row.innerHTML =
+        `<label>${si}. ${SERVO_NAMES[si]}: <span class="servo-val">${val}</span>°</label>` +
+        `<input type="range" min="0" max="180" step="0.5" value="${val}" ${kf ? '' : 'disabled'}>`;
+      const slider = row.querySelector('input');
+      slider.oninput = (e) => {
+        if (selectedKf < 0) return;
+        const v = parseFloat(e.target.value);
+        motion.keyframes[selectedKf].angles[si] = v;
+        row.querySelector('.servo-val').innerText = v;
+        schedulePreview(si); // 이 서보 하나만 미리보기 이동
+      };
+      div.appendChild(row);
+    });
+    grid.appendChild(div);
+  });
+}
+
+// 초기화
+newMotion();
+refreshList();
+pollStatus();
+</script>
+</body>
+</html>

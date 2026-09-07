@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>서보 캘리브레이션</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
+  h2 { margin: 0 0 8px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .muted { color: #777; font-size: 12px; }
+  .legs { display: flex; gap: 12px; flex-wrap: wrap; }
+  fieldset { border: 1px solid #ccc; min-width: 300px; }
+  legend { font-weight: bold; }
+  .name { width: 150px; font-size: 14px; }
+  .val { width: 48px; text-align: right; }
+  #status-msg { color: green; min-height: 20px; margin: 6px 0; }
+  #status-msg.err { color: #c00; }
+</style>
+</head>
+<body>
+{# 다리별 서보 배치: (제목, [(서보 인덱스, 부위, 한글), ...]) — README 맵핑표와 동일 #}
+{% set groups = [
+    ('앞왼쪽 (FL)',   [(2, 'Wave', '발목'), (0, 'Hip', '골반'), (1, 'Knee', '무릎')]),
+    ('앞오른쪽 (FR)', [(3, 'Wave', '발목'), (4, 'Hip', '골반'), (5, 'Knee', '무릎')]),
+    ('뒤왼쪽 (BL)',   [(8, 'Wave', '발목'), (6, 'Hip', '골반'), (7, 'Knee', '무릎')]),
+    ('뒤오른쪽 (BR)', [(9, 'Wave', '발목'), (10, 'Hip', '골반'), (11, 'Knee', '무릎')]),
+] %}
+
+<h2>서보 캘리브레이션</h2>
+<div class="row"><a href="/">← 조종 화면</a> | <a href="/motion">동작 만들기</a></div>
+<p class="muted" style="font-size:13px">
+  로봇이 <b>기립 자세</b>로 고정된 상태에서 슬라이더로 각 서보의 중간각(영점)을 맞춥니다.
+  다리가 지면과 수직/수평이 되도록 조정하세요. 값은 즉시 로봇에 반영됩니다.
+  ID 칸은 그 관절에 연결된 서보의 UART ID(1~253)입니다.
+</p>
+<div id="status-msg">로봇에 연결하는 중...</div>
+
+<div class="row">
+  프리셋:
+  {% for p in [1, 2, 3] %}
+  <span style="margin-right:8px">
+    {{ p }}{% if p == active_preset %} <b id="active-mark">(사용 중)</b>{% endif %}
+    <button onclick="loadPreset({{ p }})">불러오기</button>
+    <button onclick="savePreset({{ p }})">저장</button>
+  </span>
+  {% endfor %}
+</div>
+
+<div class="legs">
+  {% for title, servos in groups %}
+  <fieldset>
+    <legend>{{ title }}</legend>
+    {% for i, part, kr in servos %}
+    <div class="row">
+      <span class="name">{{ part }} ({{ kr }}, 서보 {{ i }})</span>
+      <input type="range" id="servo_{{ i }}" min="0" max="180" step="0.5"
+             value="{{ (angles[i]|float)|round(1) }}" oninput="updateServo({{ i }}, this.value)" style="width:160px">
+      <span class="val" id="val_{{ i }}">{{ (angles[i]|float)|round(1) }}</span>°
+      <label class="muted">ID <input type="number" id="pin_{{ i }}" min="1" max="253" value="{{ pins[i] }}"
+             style="width:56px" onchange="updatePin({{ i }}, this.value)"></label>
+    </div>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+</div>
+
+<div class="row" style="margin-top:12px">
+  <button onclick="exitCalibration()">저장하고 조종 화면으로</button>
+  <span class="muted">페이지를 그냥 떠나도 자동으로 저장·종료되며 로봇은 기립 자세로 돌아갑니다.</span>
+</div>
+
+<script>
+function sendCommand(data) {
+  return fetch('/api/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+function showStatus(msg, isError, keep) {
+  var el = document.getElementById('status-msg');
+  el.innerText = msg;
+  el.className = isError ? 'err' : '';
+  if (!keep) setTimeout(function () { if (el.innerText === msg) el.innerText = ''; }, 3000);
+}
+
+window.onload = function () {
+  // 캘리브레이션 모드 진입 (로봇이 부드럽게 기립 자세로 이동한 뒤 고정)
+  sendCommand({ A: 2000 }).then(function () {
+    showStatus('캘리브레이션 모드 — 로봇이 기립 자세로 고정됩니다. 슬라이더를 움직여 보세요.', false, true);
+  }).catch(function () {
+    showStatus('서버 연결 실패', true, true);
+  });
+};
+
+// 서보 ID(핀) 매핑 변경. 마지막으로 유효했던 값을 기억해 잘못 입력 시 되돌린다
+var lastPins = {{ pins | tojson }};
+function updatePin(joint_id, hw_pin) {
+  var pin = parseInt(hw_pin);
+  joint_id = parseInt(joint_id);
+  if (pin >= 1 && pin <= 253) {
+    lastPins[joint_id] = pin;
+    sendCommand({ A: 2005, B: joint_id, C: pin });
+    showStatus('서보 ' + joint_id + ' → UART ID ' + pin + ' 저장');
+  } else {
+    alert('서보 ID는 1~253 사이여야 합니다. (254=브로드캐스트)');
+    document.getElementById('pin_' + joint_id).value = lastPins[joint_id];
+  }
+}
+
+// 실시간 각도 업데이트
+function updateServo(servo_id, value) {
+  document.getElementById('val_' + servo_id).innerText = value;
+  sendCommand({ A: 2002, B: parseInt(servo_id), C: parseFloat(value) });
+}
+
+// 프리셋 불러오기: 서버에 적용한 뒤 새로고침해서 슬라이더에 값을 반영한다
+var skipBeacon = false;
+function loadPreset(preset_id) {
+  if (!confirm('프리셋 ' + preset_id + '을(를) 불러올까요? 현재 슬라이더 값은 저장하지 않으면 사라집니다.')) return;
+  skipBeacon = true; // 새로고침은 캘리브레이션 종료가 아니므로 이탈 신호를 보내지 않는다
+  sendCommand({ A: 2003, B: preset_id }).then(function () {
+    showStatus('프리셋 ' + preset_id + ' 불러옴 — 화면을 갱신합니다...', false, true);
+    setTimeout(function () { window.location.reload(); }, 400);
+  }).catch(function () { skipBeacon = false; showStatus('불러오기 실패', true); });
+}
+
+// 프리셋 저장하기 (현재 값을 저장하고 그 프리셋을 활성화)
+function savePreset(preset_id) {
+  sendCommand({ A: 2004, B: preset_id }).then(function () {
+    showStatus('프리셋 ' + preset_id + ' 에 저장하고 활성화했습니다.');
+    var m = document.getElementById('active-mark');
+    if (m) m.remove();
+  });
+}
+
+// 캘리브레이션 모드 종료 및 메인으로
+function exitCalibration() {
+  skipBeacon = true;
+  sendCommand({ A: 2001 });
+  showStatus('저장했습니다. 조종 화면으로 이동합니다...', false, true);
+  setTimeout(function () { window.location.href = '/'; }, 500);
+}
+
+// 안전장치: 종료 버튼 없이 페이지를 떠나도(뒤로가기/탭 닫기) 캘리브레이션
+// 모드에 로봇이 갇히지 않도록, 이탈 시 저장+종료(A:2001)를 전송한다
+window.addEventListener('pagehide', function () {
+  if (skipBeacon) return;
+  var payload = new Blob([JSON.stringify({ A: 2001 })], { type: 'application/json' });
+  navigator.sendBeacon('/api/command', payload);
+});
+</script>
+</body>
+</html>
