@@ -30,7 +30,8 @@ import threading
 
 import util
 from config import (CALIBRATION_FILE, NUM_SERVOS, SERVO_NAMES, HEARTBEAT_INTERVAL,
-                    QUERY_TIMEOUT, MIN_STEP_SPEED, MAX_STEP_SPEED)
+                    QUERY_TIMEOUT, MIN_STEP_SPEED, MAX_STEP_SPEED,
+                    HOME_POSE_MS, CALIBRATION_ADJUST_MS)
 
 # 포즈(J) 보간 곡선 — 펌웨어의 PoseEase와 같은 값
 EASE_INOUT = 0    # 코사인: 양끝 속도 0 (단발 자세 전환)
@@ -70,7 +71,9 @@ calibration_data = {
     }
 }
 pin_mapping = calibration_data["pin_mapping"]
-ServoMiddleAngle = calibration_data["presets"]["1"]
+# 프리셋 리스트를 그대로 참조하면 안 된다 — 별칭이 되면 현재 각도를 수정할 때
+# 활성 프리셋이 아닌 다른 프리셋까지 같이 바뀐다. 항상 복사해서 쓴다.
+ServoMiddleAngle = list(calibration_data["presets"]["1"])
 calibrationMode = False
 
 
@@ -295,6 +298,15 @@ def pose_servos(duration_ms, servo_angles):
     send_cmd(f"K {int(duration_ms)} " + " ".join(pairs))
 
 
+def pose_home(duration_ms=HOME_POSE_MS):
+    """
+    기준 자세(= 캘리브레이션 각도 ServoMiddleAngle)로 이동해 고정한다.
+    IK로 계산하는 기립 자세(F 4)가 아니라 align_90.py와 같은 방식으로 각도를 그대로
+    적용하므로, 캘리브레이션에 저장된 값이 곧 로봇이 취하는 자세가 된다.
+    """
+    pose(duration_ms, ServoMiddleAngle)
+
+
 def read_pose(source="present"):
     """
     현재 자세 각도 12개를 읽는다.
@@ -344,21 +356,58 @@ def enable_torque():
 
 # ==================== 캘리브레이션 ====================
 
+def _valid_preset(values):
+    """프리셋 1개가 쓸 수 있는 형태인지 (0~180 사이 숫자 NUM_SERVOS개)"""
+    if not isinstance(values, list) or len(values) != NUM_SERVOS:
+        return False
+    try:
+        return all(0 <= float(v) <= 180 for v in values)
+    except (TypeError, ValueError):
+        return False
+
+
 def load_calibration():
+    """
+    calibration.json 로드. 사람이 직접 편집하는 파일이고 이 함수는 import 시점에
+    실행되므로, 내용이 깨져 있어도 예외를 던지지 않고 기본값(90도)으로 되돌려
+    서버가 뜨는 것을 보장한다.
+    """
     global pin_mapping, ServoMiddleAngle
     if os.path.exists(CALIBRATION_FILE):
         try:
             with open(CALIBRATION_FILE, 'r') as f:
                 calibration_data.update(json.load(f))
-            print(f"[dog_cont] Calibration loaded. Active preset: {calibration_data['active_preset']}")
         except Exception as e:
             print(f"[dog_cont] Failed to load calibration: {e}")
 
-    pin_mapping = calibration_data["pin_mapping"]
-    if 0 in pin_mapping:
-        pin_mapping = list(range(1, NUM_SERVOS + 1))
-        calibration_data["pin_mapping"] = pin_mapping
-    ServoMiddleAngle = calibration_data["presets"][str(calibration_data["active_preset"])]
+    presets = calibration_data.get("presets")
+    if not isinstance(presets, dict):
+        presets = {}
+    for key in ("1", "2", "3"):
+        if not _valid_preset(presets.get(key)):
+            print(f"[dog_cont] 프리셋 {key} 값이 잘못되어 90도로 초기화합니다.")
+            presets[key] = [90] * NUM_SERVOS
+    calibration_data["presets"] = presets
+
+    active = str(calibration_data.get("active_preset", 1))
+    if active not in presets:
+        print(f"[dog_cont] active_preset({active})에 해당하는 프리셋이 없어 1번을 사용합니다.")
+        active = "1"
+    calibration_data["active_preset"] = int(active)
+
+    # 0은 '미설정'을 뜻하던 옛 값. 범위를 벗어나면 기본 순서(1~12)로 되돌린다.
+    try:
+        pins = [int(p) for p in calibration_data.get("pin_mapping", [])]
+    except (TypeError, ValueError):
+        pins = []
+    if len(pins) != NUM_SERVOS or not all(1 <= p <= 253 for p in pins):
+        pins = list(range(1, NUM_SERVOS + 1))
+    pin_mapping = pins
+    calibration_data["pin_mapping"] = pins
+
+    # 프리셋 리스트를 그대로 참조하면 별칭이 되어 다른 프리셋까지 오염된다 (복사본 사용)
+    ServoMiddleAngle = [float(a) for a in presets[active]]
+    print(f"[dog_cont] Calibration loaded. Active preset: {calibration_data['active_preset']}")
 
 
 def save_calibration():
@@ -382,24 +431,31 @@ def send_initial_calibration():
     time.sleep(0.05)
 
 
+# 캘리브레이션 모드는 로봇을 기준 자세(= 캘리브레이션 각도)로 세워 두고, 슬라이더로 바꾼
+# 값이 그 서보에 즉시 그대로 반영되게 한다. 즉 화면의 숫자 = 실제 서보 각도.
+# (기존에는 ESP32의 "C 1"이 IK로 계산한 기립 자세를 유지했기 때문에, 슬라이더에 90이
+#  떠 있어도 실제 서보는 전혀 다른 각도(예: 25.3도)로 가 있었다. align_90.py로 맞춘
+#  기준과도 어긋나서, 캘리브레이션 페이지에 들어가기만 해도 로봇이 틀어졌다.)
+
+
 def enter_calibration_mode():
+    """기준 자세(캘리브레이션 각도)로 이동해 고정한다"""
     global calibrationMode
     calibrationMode = True
-    _move["fb"] = 0
-    _move["lr"] = 0
-    send_cmd("C 1")
+    pose_home()
     print("[dog_cont] Entered calibration mode.")
 
 
 def exit_calibration_mode():
+    """값을 저장하고 모드만 해제한다. 자세는 캘리브레이션 각도 그대로 유지."""
     global calibrationMode
     save_calibration()
     calibrationMode = False
-    send_cmd("C 0")
     print("[dog_cont] Exited calibration mode.")
 
 
 def update_calibration_angle(servo_id, angle):
+    """중간각 1개 변경 -> 그 서보만 새 각도로 즉시 이동 (나머지는 현재 자세 유지)"""
     try:
         servo_id = int(servo_id)
         angle = round(max(0.0, min(180.0, float(angle))), 1)
@@ -408,7 +464,9 @@ def update_calibration_angle(servo_id, angle):
     if 0 <= servo_id < NUM_SERVOS:
         ServoMiddleAngle[servo_id] = angle
         calibration_data["presets"][str(calibration_data["active_preset"])][servo_id] = angle
-        send_cmd("A " + _fmt_angles(ServoMiddleAngle))
+        send_cmd("A " + _fmt_angles(ServoMiddleAngle))  # 보행 IK가 쓰는 기준값도 갱신
+        if calibrationMode:
+            pose_servos(CALIBRATION_ADJUST_MS, {servo_id: angle})
 
 
 def update_pin_mapping(joint_id, new_pin):
@@ -440,6 +498,8 @@ def set_calibration_preset(preset_id):
         calibration_data["active_preset"] = preset_id
         ServoMiddleAngle = list(calibration_data["presets"][str(preset_id)])
         send_cmd("A " + _fmt_angles(ServoMiddleAngle))
+        if calibrationMode:
+            pose_home()  # 새 프리셋 각도로 실제로 이동
         save_calibration()
         print(f"[dog_cont] Loaded Preset {preset_id}")
 

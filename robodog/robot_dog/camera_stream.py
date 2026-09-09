@@ -39,45 +39,49 @@ class CameraStream:
         self._thread = None
         self._running = False
         self._latest = None
-        self._lock = threading.Lock()
-        self._event = threading.Event()
+        # 프레임 일련번호. 시청자마다 "내가 마지막에 본 번호"를 들고 다음 프레임을
+        # 기다리므로, 여러 명이 동시에 봐도 서로 프레임을 뺏지 않는다.
+        self._seq = 0
+        self._cond = threading.Condition()
+        self._state_lock = threading.Lock()  # start/close 직렬화
 
     def start(self):
         """카메라 스트림 시작 (백그라운드 스레드로 프레임 캡처)"""
-        if self._running:
-            return
-        print("[camera] start()", flush=True)
+        with self._state_lock:
+            if self._running:
+                return
+            print("[camera] start()", flush=True)
 
-        if PICAMERA_AVAILABLE:
-            try:
-                self.picam2 = Picamera2()
-                cfg = self.picam2.create_video_configuration(
-                    main={"format": 'XRGB8888', "size": self.size})
-                self.picam2.configure(cfg)
-                self.picam2.start()
-                print("[camera] picamera2 초기화 완료.")
-            except Exception as e:
-                print(f"[camera] picamera2 초기화 실패: {e}")
-                self.picam2 = None
+            if PICAMERA_AVAILABLE:
+                try:
+                    self.picam2 = Picamera2()
+                    cfg = self.picam2.create_video_configuration(
+                        main={"format": 'XRGB8888', "size": self.size})
+                    self.picam2.configure(cfg)
+                    self.picam2.start()
+                    print("[camera] picamera2 초기화 완료.")
+                except Exception as e:
+                    print(f"[camera] picamera2 초기화 실패: {e}")
+                    self.picam2 = None
 
-        if self.picam2 is None:
-            try:
-                self.cap = cv2.VideoCapture(0)
-                if self.cap.isOpened():
-                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.size[0])
-                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.size[1])
-                    print("[camera] OpenCV 웹캠 초기화 완료.")
-                else:
+            if self.picam2 is None:
+                try:
+                    self.cap = cv2.VideoCapture(0)
+                    if self.cap.isOpened():
+                        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.size[0])
+                        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.size[1])
+                        print("[camera] OpenCV 웹캠 초기화 완료.")
+                    else:
+                        self.cap.release()
+                        self.cap = None
+                        print("[camera] 사용 가능한 카메라가 없습니다. 플레이스홀더를 스트리밍합니다.")
+                except Exception as e:
                     self.cap = None
-                    print("[camera] 사용 가능한 카메라가 없습니다. 플레이스홀더를 스트리밍합니다.")
-            except Exception as e:
-                self.cap = None
-                print(f"[camera] 웹캠 초기화 실패: {e}")
+                    print(f"[camera] 웹캠 초기화 실패: {e}")
 
-        self._running = True
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
-        atexit.register(self.close)
+            self._running = True
+            self._thread = threading.Thread(target=self._loop, daemon=True)
+            self._thread.start()
 
     def _placeholder(self, text):
         frame = np.full((self.size[1], self.size[0], 3), 255, dtype=np.uint8)
@@ -108,28 +112,35 @@ class CameraStream:
                 ok, jpeg = cv2.imencode(
                     ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.quality])
                 if ok:
-                    with self._lock:
+                    with self._cond:
                         self._latest = jpeg.tobytes()
-                    self._event.set()
+                        self._seq += 1
+                        self._cond.notify_all()
             except Exception as e:
                 print("[camera] capture error:", e, flush=True)
                 time.sleep(0.2)
             time.sleep(period)
 
-    def get_jpeg(self, wait_ms=800):
-        """최신 JPEG 프레임 반환 (없으면 wait_ms 동안 대기)"""
-        if not self._running:
-            self.start()
-        if not self._event.wait(timeout=wait_ms / 1000.0):
-            return None
-        self._event.clear()
-        with self._lock:
-            return self._latest
+    def get_jpeg(self, last_seq=0, wait_ms=1000):
+        """
+        last_seq 이후의 새 프레임을 기다려 (일련번호, JPEG)을 반환한다.
+        시청자별로 일련번호를 들고 있으므로 여러 명이 동시에 봐도 프레임을 뺏기지 않는다.
+        새 프레임이 없으면 (last_seq, None).
+        """
+        deadline = time.monotonic() + wait_ms / 1000.0
+        with self._cond:
+            while self._seq == last_seq and self._running:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return last_seq, None
+                self._cond.wait(remaining)
+            return self._seq, self._latest
 
     def mjpeg_generator(self):
-        """MJPEG 스트림(HTTP용) 생성 제너레이터"""
-        while True:
-            buf = self.get_jpeg(wait_ms=1000)
+        """MJPEG 스트림(HTTP용) 생성 제너레이터. 카메라가 닫히면 스트림도 끝난다."""
+        seq = 0
+        while self._running:
+            seq, buf = self.get_jpeg(seq)
             if not buf:
                 continue
             yield (b"--frame\r\n"
@@ -138,11 +149,25 @@ class CameraStream:
                    buf + b"\r\n")
 
     def close(self):
-        """카메라 스트림 안전 종료"""
-        if not self._running:
-            return
-        print("[camera] close()", flush=True)
-        self._running = False
+        """카메라 스트림 안전 종료 (캡처 스레드를 먼저 멈춘 뒤 장치를 해제한다)"""
+        with self._state_lock:
+            if not self._running:
+                return
+            print("[camera] close()", flush=True)
+            self._running = False
+            thread = self._thread
+            self._thread = None
+
+        with self._cond:
+            self._cond.notify_all()  # 프레임을 기다리던 스트림들을 깨워서 끝내준다
+
+        # 캡처 스레드가 read()/capture_array() 안에 있는 동안 장치를 해제하면
+        # OpenCV/picamera2가 죽을 수 있으므로, 스레드가 끝난 뒤에 해제한다.
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
+            if thread.is_alive():
+                print("[camera] 경고: 캡처 스레드가 2초 안에 끝나지 않았습니다.")
+
         try:
             if self.picam2:
                 self.picam2.stop()
@@ -158,3 +183,4 @@ class CameraStream:
 
 
 camera = CameraStream()  # CameraStream 인스턴스 (전역, 외부에서 사용)
+atexit.register(camera.close)

@@ -30,8 +30,10 @@
 <h2>서보 캘리브레이션</h2>
 <div class="row"><a href="/">← 조종 화면</a> | <a href="/motion">동작 만들기</a></div>
 <p class="muted" style="font-size:13px">
-  로봇이 <b>기립 자세</b>로 고정된 상태에서 슬라이더로 각 서보의 중간각(영점)을 맞춥니다.
-  다리가 지면과 수직/수평이 되도록 조정하세요. 값은 즉시 로봇에 반영됩니다.
+  로봇이 <b>여기 표시된 각도 그대로</b> 고정된 상태에서 슬라이더로 각 서보의 중간각(영점)을 맞춥니다.
+  슬라이더 숫자 = 실제 서보 각도이며, 값은 즉시 그 서보에만 반영됩니다.
+  align_90 유틸리티로 조립한 기준(전부 90도)과 같은 기준이므로,
+  다리가 지면과 수직/수평이 되도록 조정하세요.
   ID 칸은 그 관절에 연결된 서보의 UART ID(1~253)입니다.
 </p>
 <div id="status-msg">로봇에 연결하는 중...</div>
@@ -67,7 +69,7 @@
 
 <div class="row" style="margin-top:12px">
   <button onclick="exitCalibration()">저장하고 조종 화면으로</button>
-  <span class="muted">페이지를 그냥 떠나도 자동으로 저장·종료되며 로봇은 기립 자세로 돌아갑니다.</span>
+  <span class="muted">페이지를 그냥 떠나도 자동으로 저장·종료되며, 로봇은 지금 캘리브레이션 자세를 그대로 유지합니다.</span>
 </div>
 
 <script>
@@ -87,9 +89,9 @@ function showStatus(msg, isError, keep) {
 }
 
 window.onload = function () {
-  // 캘리브레이션 모드 진입 (로봇이 부드럽게 기립 자세로 이동한 뒤 고정)
+  // 캘리브레이션 모드 진입 (로봇이 화면에 표시된 캘리브레이션 각도 그대로 고정된다)
   sendCommand({ A: 2000 }).then(function () {
-    showStatus('캘리브레이션 모드 — 로봇이 기립 자세로 고정됩니다. 슬라이더를 움직여 보세요.', false, true);
+    showStatus('캘리브레이션 모드 — 로봇이 아래 각도 그대로 고정됩니다. 슬라이더를 움직여 보세요.', false, true);
   }).catch(function () {
     showStatus('서버 연결 실패', true, true);
   });

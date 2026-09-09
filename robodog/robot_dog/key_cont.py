@@ -8,7 +8,7 @@
 - 조종 keep-alive 워치독: 클라이언트는 키를 누르고 있는 동안(또는 편집기에서
   동작을 재생하는 동안) 1초마다 POST /api/hold 를 보낸다. 종류는 두 가지:
     "move"   이동(보행) 중임을 알림 — 끊기면 이동을 정지
-    "motion" 누르는 동안 재생(hold) 동작이 재생 중임을 알림 — 끊기면 동작 정지 후 기립
+    "motion" 누르는 동안 재생(hold) 동작이 재생 중임을 알림 — 끊기면 동작 정지 후 기준 자세 복귀
   HOLD_TIMEOUT(기본 3초) 이상 끊기면(WiFi 끊김, 브라우저/탭 종료) 서버가 스스로 멈춘다.
   ※ /keys 로 조종하는 외부 프로그램도 이동 중에는 HOLD_TIMEOUT 안에 명령을
     다시 보내야 한다 (같은 키를 반복 전송하면 된다).
@@ -122,7 +122,7 @@ def handle_key(keys):
     fb, lr = keys_to_move(keys)
     if fb != 0 or lr != 0:
         if motion_cont.is_playing():
-            motion_cont.stop(to_stand=False)
+            motion_cont.stop(to_home=False)
         refresh_hold('move')
     dog_cont.input_cmd(fb, lr)
 
@@ -155,8 +155,8 @@ def _hold_watchdog_loop():
                 print("[key_cont] 조종 keep-alive 끊김 -> 이동 정지")
                 dog_cont.input_cmd(0, 0)
             if motion_cont.is_hold_playing() and _hold_stale('motion'):
-                print("[key_cont] 동작 keep-alive 끊김 -> 동작 정지 후 기립")
-                motion_cont.stop(to_stand=True)
+                print("[key_cont] 동작 keep-alive 끊김 -> 동작 정지 후 기준 자세 복귀")
+                motion_cont.stop(to_home=True)
         except Exception as e:
             print(f"[key_cont] 워치독 에러: {e}")
 

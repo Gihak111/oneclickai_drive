@@ -29,6 +29,13 @@
 //
 // 워치독: 보행 중 2초간 아무 커맨드가 없으면 자동 정지 (통신 두절 안전장치)
 //
+// 기준 자세: IK로 만드는 모든 자세(기립/보행/특수기능)는 "기준 자세"에서의 관절
+//   오프셋(NeutralOffset)을 빼서 재중심화한다. 그래서 캘리브레이션 각도
+//   (ServoMiddleAngle, A 커맨드)가 곧 로봇의 기준 자세가 되고, 조립 유틸리티
+//   align_90.py로 맞춘 자세와 기준이 일치한다. (재중심화 전에는 WAVEGO 기준
+//   웅크린 높이가 중심이라, 캘리브레이션 90도에서 수십 도 벗어난 자세를 중심으로
+//   움직여 서보가 가동범위 끝에 몰렸다)
+//
 // 자세 전환(v3): 보행 시작/정지, 기립, 캘리브레이션 진입/종료가 전부 보간으로
 //   부드럽게 이어진다. 정지 상태에서 보행을 시작할 때는 먼저 "보행 시작 자세"로
 //   진입한 뒤 걷기 시작하므로, 토크 해제 후 손으로 잡은 임의 자세나 동작 재생
@@ -548,8 +555,12 @@ void single_leg_plane_ik(float LS, float LA, float LC, float LD, float LE,
   linkageBuffer[yIdx] = positionY;
 }
 
-void single_leg_ctrl(int LegNum, float xPos, float yPos, float zPos) {
-  int NumF, NumB, NumW;
+// 다리 1개의 발 좌표 -> 관절 오프셋(영점 대비, ServoDirection 적용 전)과 서보 인덱스.
+// 순수 기구학만 담당한다. 어떤 영점에 얹을지는 single_leg_ctrl이 정한다.
+// 잘못된 다리 번호면 false.
+bool leg_joint_offsets(int LegNum, float xPos, float yPos, float zPos, int &NumF,
+                       int &NumB, int &NumW, float &offF, float &offB,
+                       float &offW) {
   int alphaOut, xPosBuffer, yPosBuffer, betaOut, wiggleAlpha, wiggleLen;
 
   if (LegNum == 1) {
@@ -593,7 +604,7 @@ void single_leg_ctrl(int LegNum, float xPos, float yPos, float zPos) {
     wiggleAlpha = 30;
     wiggleLen = 31;
   } else {
-    return;
+    return false;
   }
 
   int betaB = betaOut + 1;
@@ -607,17 +618,55 @@ void single_leg_ctrl(int LegNum, float xPos, float yPos, float zPos) {
                     (linkageBuffer[xPosBuffer] - linkage_s / 2.0), betaOut,
                     betaB, betaC);
 
+  offW = linkageBuffer[wiggleAlpha];
+  offF = 90.0 - linkageBuffer[betaOut];
+  offB = linkageBuffer[alphaOut];
+  return true;
+}
+
+// 기준 자세(발이 앞뒤 0, 지지 높이)에서의 관절 오프셋. 이 값을 빼서 궤적을
+// 재중심화하면 "기준 자세 = 캘리브레이션 각도(ServoMiddleAngle)"가 된다.
+// init_neutral_offsets() 전에는 0이므로, 호출 전 동작은 기존과 동일하다.
+float NeutralOffset[12] = {0};
+
+void init_neutral_offsets() {
+  for (int i = 0; i < 12; i++)
+    NeutralOffset[i] = 0;
+  // 다리 1,3은 +X, 다리 2,4는 -X (stand_mass_center / simple_gait와 동일)
+  const float legX[4] = {WALK_EXTENDED_X, -WALK_EXTENDED_X, WALK_EXTENDED_X,
+                         -WALK_EXTENDED_X};
+  for (int leg = 1; leg <= 4; leg++) {
+    int NumF, NumB, NumW;
+    float offF, offB, offW;
+    if (leg_joint_offsets(leg, legX[leg - 1], WALK_HEIGHT, WALK_EXTENDED_Z,
+                          NumF, NumB, NumW, offF, offB, offW)) {
+      NeutralOffset[NumW] = offW;
+      NeutralOffset[NumF] = offF;
+      NeutralOffset[NumB] = offB;
+    }
+  }
+}
+
+// 발 좌표 -> GoalAngle. 캘리브레이션 각도를 기준 자세로 삼아 오프셋만 얹는다.
+void single_leg_ctrl(int LegNum, float xPos, float yPos, float zPos) {
+  int NumF, NumB, NumW;
+  float offF, offB, offW;
+  if (!leg_joint_offsets(LegNum, xPos, yPos, zPos, NumF, NumB, NumW, offF, offB,
+                         offW))
+    return;
+
   GoalAngle[NumW] =
       constrain(ServoMiddleAngle[NumW] +
-                    linkageBuffer[wiggleAlpha] * ServoDirection[NumW],
+                    (offW - NeutralOffset[NumW]) * ServoDirection[NumW],
                 0, 180);
   GoalAngle[NumF] =
       constrain(ServoMiddleAngle[NumF] +
-                    (90.0 - linkageBuffer[betaOut]) * ServoDirection[NumF],
+                    (offF - NeutralOffset[NumF]) * ServoDirection[NumF],
                 0, 180);
-  GoalAngle[NumB] = constrain(ServoMiddleAngle[NumB] + linkageBuffer[alphaOut] *
-                                                           ServoDirection[NumB],
-                              0, 180);
+  GoalAngle[NumB] =
+      constrain(ServoMiddleAngle[NumB] +
+                    (offB - NeutralOffset[NumB]) * ServoDirection[NumB],
+                0, 180);
 }
 
 // 4다리 모두 같은 높이로 (GoalAngle 계산 + 전송)
@@ -1289,6 +1338,7 @@ void setup() {
   Serial.setTimeout(50); // 개행 없는 부분 수신이 제어 루프를 오래 막지 않도록
   Serial2.begin(1000000, SERIAL_8N1, RXD2, TXD2);
   delay(100);
+  init_neutral_offsets(); // 기립/보행의 중앙을 캘리브레이션 각도에 맞추기 위한 기준값
   detect_bus_echo(); // 드라이버 보드 에코 여부 자동 감지 (핑/위치 읽기 파서가 사용)
 
   // 토크 활성화 (모터 고정)

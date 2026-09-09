@@ -194,7 +194,7 @@ def handle_command(data):
         lr = _as_int(data.get("C"), -1, 1, 0)
         if fb != 0 or lr != 0:
             if motion_cont.is_playing():
-                motion_cont.stop(to_stand=False)  # 조종 개입 시 동작 재생 중단
+                motion_cont.stop(to_home=False)  # 조종 개입 시 동작 재생 중단
             key_cont.refresh_hold('move')
         dog_cont.input_cmd(fb, lr)
 
@@ -205,13 +205,13 @@ def handle_command(data):
                  3: dog_cont.function_jump, 4: dog_cont.function_stand}
         if func_num in funcs:
             if motion_cont.is_playing():
-                motion_cont.stop(to_stand=False)
+                motion_cont.stop(to_home=False)
             funcs[func_num]()
 
     # 캘리브레이션
     elif cmd_type == 2000:
         if motion_cont.is_playing():
-            motion_cont.stop(to_stand=False)  # 재생 중인 J가 캘리브레이션 자세를 덮지 않게
+            motion_cont.stop(to_home=False)  # 재생 중인 J가 캘리브레이션 자세를 덮지 않게
         dog_cont.enter_calibration_mode()
     elif cmd_type == 2001:
         dog_cont.exit_calibration_mode()
@@ -340,15 +340,15 @@ def api_motion_play_data():
 @app.route('/api/motion/stop', methods=['POST'])
 def api_motion_stop():
     """
-    재생 중단 후 기립. body(선택):
-      only_if_playing: 재생 중이 아니면 기립 명령을 보내지 않음 (다른 조작 방해 방지)
+    재생 중단 후 기준 자세(캘리브레이션 각도)로 복귀. body(선택):
+      only_if_playing: 재생 중이 아니면 복귀 명령을 보내지 않음 (다른 조작 방해 방지)
       motion: 이 이름의 동작이 재생 중일 때만 중단 (화살표 키를 뗐을 때 사용)
     """
     data = _json_dict()
     only_motion = data.get("motion") if isinstance(data.get("motion"), str) else None
     if _as_bool(data.get("only_if_playing")) and not motion_cont.is_playing():
         return jsonify({"status": "success", "skipped": True})
-    stopped = motion_cont.stop(to_stand=True, only_motion=only_motion)
+    stopped = motion_cont.stop(to_home=True, only_motion=only_motion)
     return jsonify({"status": "success", "skipped": not stopped})
 
 
@@ -374,7 +374,7 @@ def api_motion_pose():
         return jsonify({"error": "duration_ms는 숫자여야 합니다."}), 400
 
     if motion_cont.is_playing():
-        motion_cont.stop(to_stand=False)
+        motion_cont.stop(to_home=False)
 
     # 부분 포즈: 지정 서보만 이동
     servos = data.get("servos")
@@ -409,7 +409,7 @@ def api_motion_current_pose():
     """
     source = 'goal' if request.args.get('source') == 'goal' else 'present'
     if motion_cont.is_playing():
-        motion_cont.stop(to_stand=False)  # 움직이는 중에는 자세를 읽을 수 없다
+        motion_cont.stop(to_home=False)  # 움직이는 중에는 자세를 읽을 수 없다
     try:
         angles = dog_cont.read_pose(source)
     except dog_cont.ServoReadError as e:
@@ -426,7 +426,7 @@ def api_motion_torque():
     data = _json_dict()
     on = _as_bool(data.get("on"))
     if motion_cont.is_playing():
-        motion_cont.stop(to_stand=False)
+        motion_cont.stop(to_home=False)
     if on:
         dog_cont.enable_torque()
     else:
@@ -459,14 +459,16 @@ if __name__ == "__main__":
     dog_cont.init()                                # ESP32 시리얼 연결
     camera.start()                                 # 카메라 스트림
     util.start_system_info(INFO_UPDATE_INTERVAL)   # 시스템 정보 수집
-    motion_cont.ensure_default_motions()           # "예제 걷기" 기본 동작 생성 (없을 때만)
+    motion_cont.ensure_default_motions()           # "예제 걷기" 기본 동작 생성/캘리브레이션 변경 시 갱신
     key_cont.start_hold_watchdog()                 # 조종 keep-alive 워치독
 
-    # 부팅 후 기립 자세 (ESP32가 현재 자세에서 부드럽게 전환)
+    # 부팅 시 기준 자세(캘리브레이션 각도)로 맞추고 토크를 켠다.
+    # align_90.py 등 조립 유틸리티는 종료 시 토크를 해제해 손으로 자세를 만질 수
+    # 있게 두므로, 여기서 다시 기준 자세로 부드럽게 이동하며 토크를 켠다.
     if dog_cont.HARDWARE_AVAILABLE:
-        time.sleep(1.0)
-        print("스탠드 자세를 취합니다...")
-        dog_cont.function_stand()
+        time.sleep(0.5)
+        print("기준 자세(캘리브레이션 각도)로 정렬하고 토크를 켭니다...")
+        dog_cont.pose_home()
 
     print(f"웹 서버를 시작합니다. http://<라즈베리파이_IP>:{WEB_PORT}")
     print(f"  - 조종:        http://<IP>:{WEB_PORT}/")
@@ -478,6 +480,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("프로그램 종료 중...")
     finally:
-        motion_cont.stop(to_stand=False)
+        motion_cont.stop(to_home=False)
         dog_cont.release_torque()
         print("모든 장치가 비활성화되었습니다. 종료.")

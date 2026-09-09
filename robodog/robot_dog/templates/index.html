@@ -37,16 +37,16 @@
 </div>
 
 <div class="row center pad" style="margin-top:12px">
-  <button id="btnUp" onmousedown="press('arrowup')" onmouseup="release('arrowup')" onmouseleave="release('arrowup')"
-          ontouchstart="event.preventDefault(); press('arrowup')" ontouchend="release('arrowup')" ontouchcancel="release('arrowup')">↑</button>
+  <button id="btnUp" onmousedown="pressPointer('arrowup')" onmouseup="releasePointer('arrowup')" onmouseleave="releasePointer('arrowup')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowup')" ontouchend="releasePointer('arrowup')" ontouchcancel="releasePointer('arrowup')">↑</button>
 </div>
 <div class="row center pad">
-  <button id="btnLeft" onmousedown="press('arrowleft')" onmouseup="release('arrowleft')" onmouseleave="release('arrowleft')"
-          ontouchstart="event.preventDefault(); press('arrowleft')" ontouchend="release('arrowleft')" ontouchcancel="release('arrowleft')">←</button>
-  <button id="btnDown" onmousedown="press('arrowdown')" onmouseup="release('arrowdown')" onmouseleave="release('arrowdown')"
-          ontouchstart="event.preventDefault(); press('arrowdown')" ontouchend="release('arrowdown')" ontouchcancel="release('arrowdown')">↓</button>
-  <button id="btnRight" onmousedown="press('arrowright')" onmouseup="release('arrowright')" onmouseleave="release('arrowright')"
-          ontouchstart="event.preventDefault(); press('arrowright')" ontouchend="release('arrowright')" ontouchcancel="release('arrowright')">→</button>
+  <button id="btnLeft" onmousedown="pressPointer('arrowleft')" onmouseup="releasePointer('arrowleft')" onmouseleave="releasePointer('arrowleft')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowleft')" ontouchend="releasePointer('arrowleft')" ontouchcancel="releasePointer('arrowleft')">←</button>
+  <button id="btnDown" onmousedown="pressPointer('arrowdown')" onmouseup="releasePointer('arrowdown')" onmouseleave="releasePointer('arrowdown')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowdown')" ontouchend="releasePointer('arrowdown')" ontouchcancel="releasePointer('arrowdown')">↓</button>
+  <button id="btnRight" onmousedown="pressPointer('arrowright')" onmouseup="releasePointer('arrowright')" onmouseleave="releasePointer('arrowright')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowright')" ontouchend="releasePointer('arrowright')" ontouchcancel="releasePointer('arrowright')">→</button>
 </div>
 
 <div class="row center act" style="margin-top:12px">
@@ -181,6 +181,18 @@ function press(k) {
   setLog('이동: ' + describeMove(), 'green');
 }
 
+// 화면의 화살표 버튼(마우스/터치) 전용 래퍼.
+// mouseleave는 "마우스로 누른 것"만 놓아야 한다. 그냥 release()를 걸면, 키보드로
+// 방향키를 누르고 있는 중에 마우스 커서가 버튼 위를 스치기만 해도 이동이 끊긴다
+// (keydown이 e.repeat을 무시하므로 키를 뗐다 다시 누르기 전까지 복구되지 않는다).
+var pointerHeld = {};
+function pressPointer(k) { pointerHeld[k] = true; press(k); }
+function releasePointer(k) {
+  if (!pointerHeld[k]) return;
+  delete pointerHeld[k];
+  release(k);
+}
+
 function release(k) {
   setPad(k, false);
   // 동작 재생 중이던 화살표 키: 반복 동작은 떼면 정지, 일반 동작은 끝까지 재생
@@ -276,13 +288,13 @@ function sendAction(n) {
   setLog('특수 동작: ' + (actionNames[n] || n), '#06c');
 }
 
-// 긴급 정지: 키 상태 초기화 + 이동 정지 + 재생 중 동작 중단 후 기립
+// 긴급 정지: 키 상태 초기화 + 이동 정지 + 재생 중 동작 중단 후 기준 자세로 복귀
 function emergencyStop() {
   for (var k in pressed) { pressed[k] = false; setPad(k, false); }
   for (var mk in motionKeyActive) { motionKeyActive[mk].released = true; delete motionKeyActive[mk]; }
   sendCommand({ A: 1000, B: 0, C: 0 });
   postJson('/api/motion/stop', {}).catch(function () { });
-  setLog('정지: 모든 동작을 멈추고 기립합니다', '#c60');
+  setLog('정지: 모든 동작을 멈추고 기준 자세로 돌아갑니다', '#c60');
 }
 
 function updateSpeed() {

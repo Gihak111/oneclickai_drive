@@ -40,6 +40,13 @@ SERVO_NAMES = [
 ]
 CALIBRATION_FILE = os.path.join(THIS_DIR, "calibration.json")
 
+# ==================== 기준 자세 설정 ====================
+# 로봇의 "기준 자세"는 캘리브레이션 각도(ServoMiddleAngle) 그대로다.
+# unit_test/servo/align_90.py로 조립할 때 맞춘 기준과 같은 자세이며,
+# 부팅 / 캘리브레이션 진입 / 동작 재생 종료 후 복귀에 모두 이 자세를 쓴다.
+HOME_POSE_MS = 600            # 기준 자세로 이동하는 시간 (ms)
+CALIBRATION_ADJUST_MS = 200   # 캘리브레이션 슬라이더 조작 시 그 서보만 이동하는 시간 (ms)
+
 # ==================== 동작(모션) 편집 설정 ====================
 MOTIONS_DIR = os.path.join(THIS_DIR, "motions")
 KEY_BINDINGS_FILE = os.path.join(THIS_DIR, "key_bindings.json")  # 화살표 키 -> 동작 할당

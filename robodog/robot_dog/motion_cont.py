@@ -40,6 +40,7 @@ import math
 import threading
 
 import dog_cont
+import leg_ik
 from dog_cont import EASE_INOUT, EASE_LINEAR, EASE_IN, EASE_OUT
 from config import (MOTIONS_DIR, NUM_SERVOS, MOTION_MIN_SEGMENT_MS,
                     MOTION_MAX_SEGMENT_MS, MOTION_DEFAULT_ENTRY_MS,
@@ -349,12 +350,12 @@ def _stop_locked():
         _status.update(playing=False, motion=None, loop=False, hold=False)
 
 
-def stop(to_stand=False, only_motion=None):
+def stop(to_home=False, only_motion=None):
     """
-    재생 중단. to_stand=True면 중단 후 기립 자세로 복귀(F 4, ESP32가 부드럽게 처리).
+    재생 중단. to_home=True면 중단 후 기준 자세(캘리브레이션 각도)로 복귀한다.
     only_motion이 주어지면 그 이름의 동작이 재생 중일 때만 중단한다
     (화살표 키를 뗐을 때 다른 동작/조작을 방해하지 않기 위함).
-    중단(또는 기립)을 수행했으면 True.
+    중단(또는 복귀)을 수행했으면 True.
     """
     with _ctrl_lock:
         if only_motion is not None:
@@ -362,8 +363,8 @@ def stop(to_stand=False, only_motion=None):
                 if not _status["playing"] or _status["motion"] != only_motion:
                     return False
         _stop_locked()
-        if to_stand:
-            dog_cont.function_stand()
+        if to_home:
+            dog_cont.pose_home()
     return True
 
 
@@ -371,19 +372,13 @@ def stop(to_stand=False, only_motion=None):
 # 기본 예제 동작 생성 ("예제 걷기")
 #
 # 기존 펌웨어 보행(gait) 코드는 그대로 두고, 하드웨어에 따라 조정할 수 있는
-# "대안 걷기"를 키프레임 동작으로 자동 생성한다. 펌웨어의 역기구학(IK)을 그대로
-# 파이썬으로 포팅해서, 서버 시작 시점의 캘리브레이션(중간각)을 반영해 각도를 계산한다.
+# "대안 걷기"를 키프레임 동작으로 자동 생성한다. 다리 IK는 leg_ik 모듈(펌웨어
+# IK의 파이썬 포팅)을 쓰고, 여기서는 그 위에 걷기 궤적(보폭/스윙 높이/사이클)만
+# 얹는다. 궤적의 중앙은 캘리브레이션 각도(ServoMiddleAngle)에 맞춰 재중심화하므로,
+# 캘리브레이션 값이 곧 걷기의 중앙 자세가 된다 (펌웨어 기본 보행과 다른 점).
 # 기본 보행보다 느리고(사이클 1.8초), 발을 더 높이 들고(14mm), 보폭은 짧다(30mm).
 # 편집 페이지에서 시간/각도를 수정하거나, 화살표 키에 할당해 사용할 수 있다.
 # ============================================================================
-
-# WAVEGO 기구 치수 (펌웨어와 동일)
-_LINK_W, _LINK_S = 19.15, 12.2
-_LINK_A, _LINK_B = 40.0, 40.0
-_LINK_C, _LINK_D, _LINK_E = 39.8153, 31.7750, 30.8076
-_SERVO_DIR = [1, -1, -1, 1, 1, -1, -1, 1, 1, -1, -1, 1]
-# 다리 번호 -> (Hip/FORE, Knee/BACK, Wave) 서보 인덱스
-_LEG_SERVOS = {1: (0, 1, 2), 2: (4, 5, 3), 3: (6, 7, 8), 4: (10, 11, 9)}
 
 # 예제 걷기 파라미터 (사용자가 편집기에서 조정 가능하도록 키프레임에 구워짐)
 WALK_EXAMPLE_NAME = "예제 걷기"
@@ -395,65 +390,6 @@ _EX_HEIGHT = 95.0        # 지지 높이 (기본 보행과 동일)
 _EX_ACC = 5.0
 _EX_LIFT_PROP = 0.25
 _EX_EXT_Z = 25.0
-
-
-def _c1(v):
-    return max(-1.0, min(1.0, v))
-
-
-def _wiggle_plane_ik(a_in, b_in):
-    """정면 평면 IK: (z, y) -> (Wave 서보 각도, 유효 다리 길이)"""
-    la = _LINK_W
-    l2c = a_in * a_in + b_in * b_in
-    lc = math.sqrt(l2c)
-    lam = math.degrees(math.atan(a_in / b_in))
-    psi = math.degrees(math.acos(_c1(la / lc)))
-    lb = math.sqrt(max(0.0, l2c - la * la))
-    return psi + lam - 90.0, lb
-
-
-def _single_leg_plane_ik(x_in, y_in):
-    """측면 평면 5절 링크 IK: (x, y) -> (Hip 각도 beta, 무릎 링크 좌표)"""
-    ls2 = _LINK_S / 2.0
-    l_cd = (_LINK_C + _LINK_D) ** 2
-    le2 = _LINK_E ** 2
-    la2 = _LINK_A ** 2
-    bs_sq = (x_in + ls2) ** 2 + y_in ** 2
-    bs = math.sqrt(bs_sq)
-    lam = math.acos(_c1((bs_sq + la2 - l_cd - le2) / (2.0 * bs * _LINK_A)))
-    delta = math.atan((x_in + ls2) / y_in)
-    beta = lam - delta
-    theta = math.atan((_LINK_C + _LINK_D) / _LINK_E)
-    sledc = math.sqrt(le2 + l_cd)
-    omega = math.asin(_c1((y_in - math.cos(beta) * _LINK_A) / sledc))
-    nu = math.pi - theta - omega
-    dfx, dfy = math.cos(nu) * _LINK_E, math.sin(nu) * _LINK_E
-    mu = math.pi / 2.0 - nu
-    dex, dey = math.cos(mu) * _LINK_D, math.sin(mu) * _LINK_D
-    return math.degrees(beta), x_in + dfx - dex, y_in - dfy - dey
-
-
-def _simple_linkage_ik(a_in, b_in):
-    """2링크 IK: 무릎(BACK) 서보 각도 alpha"""
-    la, lb = _LINK_A, _LINK_B
-    l2c = a_in * a_in + b_in * b_in
-    lc = math.sqrt(l2c)
-    lam = math.degrees(math.atan(b_in / a_in)) if a_in != 0 else 0.0
-    psi = math.degrees(math.acos(_c1((la * la - lb * lb + l2c) / (2.0 * la * lc))))
-    return 90.0 - lam - psi
-
-
-def _leg_angles(leg, x, y, z, middles):
-    """다리 1개의 발 좌표 -> 서보 3개 각도 (펌웨어 single_leg_ctrl과 동일)"""
-    nf, nb, nw = _LEG_SERVOS[leg]
-    w_alpha, w_len = _wiggle_plane_ik(z, y)
-    beta, px, py = _single_leg_plane_ik(x, w_len)
-    alpha = _simple_linkage_ik(py, px - _LINK_S / 2.0)
-    return {
-        nw: max(0.0, min(180.0, middles[nw] + w_alpha * _SERVO_DIR[nw])),
-        nf: max(0.0, min(180.0, middles[nf] + (90.0 - beta) * _SERVO_DIR[nf])),
-        nb: max(0.0, min(180.0, middles[nb] + alpha * _SERVO_DIR[nb])),
-    }
 
 
 def _gait_foot(phase):
@@ -471,38 +407,101 @@ def _gait_foot(phase):
     return r, y
 
 
-def _walk_pose(global_phase, middles):
-    """전체 위상 -> 12개 서보 각도 (트로트: 대각선 쌍이 0.5 위상차, 전진 방향)"""
-    angles = [90.0] * NUM_SERVOS
-    for leg, phase_off, ext_x in ((1, 0.0, 16.0), (4, 0.0, -16.0),
-                                  (2, 0.5, -16.0), (3, 0.5, 16.0)):
+# 다리 번호 -> (위상 오프셋, 좌우 오프셋). 트로트: 대각선 쌍이 0.5 위상차
+_LEG_PHASES = ((1, 0.0, 16.0), (4, 0.0, -16.0), (2, 0.5, -16.0), (3, 0.5, 16.0))
+
+
+def _neutral_offsets():
+    """
+    보행 궤적의 중앙(발이 앞뒤 0, 지지 높이)에서의 관절 오프셋.
+    이 값을 빼서 궤적을 재중심화하면 "걷기의 중앙 = 캘리브레이션 각도"가 된다.
+    (빼지 않으면 WAVEGO 기준 웅크린 높이가 중앙이 되어, 캘리브레이션 90도에서
+     수십 도 벗어난 자세를 중심으로 걷게 되고 서보가 가동범위 끝에 몰린다)
+    """
+    offsets = {}
+    for leg, _, ext_x in _LEG_PHASES:
+        offsets.update(leg_ik.leg_offsets(leg, ext_x, _EX_HEIGHT, _EX_EXT_Z))
+    return offsets
+
+
+def _walk_pose(global_phase, middles, neutral):
+    """전체 위상 -> 12개 서보 각도. 중앙값이 middles(캘리브레이션 각도)가 되도록 재중심화."""
+    angles = [round(float(m), 1) for m in middles]
+    for leg, phase_off, ext_x in _LEG_PHASES:
         r, y = _gait_foot((global_phase + phase_off) % 1.0)
-        for idx, val in _leg_angles(leg, r + ext_x, y, _EX_EXT_Z, middles).items():
-            angles[idx] = round(val, 1)
+        for idx, off in leg_ik.leg_offsets(leg, r + ext_x, y, _EX_EXT_Z).items():
+            angle = middles[idx] + (off - neutral[idx])
+            angles[idx] = round(max(0.0, min(180.0, angle)), 1)
     return angles
 
 
 def generate_walk_motion(name=WALK_EXAMPLE_NAME):
-    """현재 캘리브레이션(중간각) 기준으로 예제 걷기 동작 데이터를 생성"""
+    """현재 캘리브레이션(중간각)을 중앙값으로 삼는 예제 걷기 동작 데이터를 생성"""
     middles = [float(a) for a in dog_cont.ServoMiddleAngle]
+    neutral = _neutral_offsets()
     keyframes = []
     for i in range(1, _EX_KEYFRAMES + 1):
         # 마지막 키프레임(i=N)은 위상 0 -> 루프 복귀(첫 키프레임 시간 간격)와 이어져
         # 걷기가 이음새 없이 반복된다
         phase = (i % _EX_KEYFRAMES) / _EX_KEYFRAMES
         t = round(_EX_CYCLE_SEC * i / _EX_KEYFRAMES, 2)
-        keyframes.append({"time": t, "angles": _walk_pose(phase, middles)})
+        keyframes.append({"time": t, "angles": _walk_pose(phase, middles, neutral)})
     return {"name": name, "loop": True, "keyframes": keyframes}
 
 
+# 생성 방식이 바뀌면(궤적 공식 변경 등) 이 숫자를 올린다 -> 기존 자동 생성 파일이 갱신된다
+_WALK_GEN_VERSION = 2
+
+
+def _walk_signature():
+    """
+    자동 생성된 예제 걷기가 "지금 설정"으로 만들어진 것인지 판별하는 서명.
+    캘리브레이션 각도나 보행 파라미터, 생성 방식이 바뀌면 값이 달라진다.
+    """
+    return {
+        "version": _WALK_GEN_VERSION,
+        "middles": [round(float(a), 2) for a in dog_cont.ServoMiddleAngle],
+        "params": [_EX_CYCLE_SEC, _EX_KEYFRAMES, _EX_RANGE, _EX_LIFT,
+                   _EX_HEIGHT, _EX_ACC, _EX_LIFT_PROP, _EX_EXT_Z],
+    }
+
+
 def ensure_default_motions():
-    """예제 걷기 동작이 없으면 생성 (삭제 후 서버 재시작 시 현재 캘리브레이션으로 재생성)"""
+    """
+    예제 걷기 동작을 현재 설정에 맞춰 생성/갱신한다.
+
+    generate_walk_motion()은 호출 시점의 캘리브레이션과 보행 파라미터로 절대 각도를
+    구워서 키프레임을 만든다. 파일이 "존재하면 그냥 둔다"고만 하면, 최초 생성 이후
+    캘리브레이션을 다시 튜닝하거나 보행 파라미터를 바꿔도 이 파일은 옛 기준의 각도로
+    남아 어긋난 채 재생된다. 그래서 자동 생성 파일에는 생성 당시의 서명을
+    "_auto_signature"로 같이 저장해두고, 지금 서명과 다르면 다시 계산해 덮어쓴다.
+
+    단, 사용자가 동작 편집기에서 이 동작을 직접 수정해 저장하면 save_motion()이
+    서명 없는 파일로 다시 쓰므로, 그 뒤로는 자동 갱신 대상에서 빠지고 사용자가 만든
+    내용이 보존된다.
+    """
     _ensure_dir()
-    if os.path.exists(_motion_path(WALK_EXAMPLE_NAME)):
-        return
+    path = _motion_path(WALK_EXAMPLE_NAME)
+    signature = _walk_signature()
+
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+        except Exception as e:
+            print(f"[motion_cont] {WALK_EXAMPLE_NAME} 읽기 실패, 그대로 둠: {e}")
+            return
+        if "_auto_signature" not in existing:
+            return  # 사용자가 편집한 파일: 건드리지 않는다
+        if existing["_auto_signature"] == signature:
+            return  # 설정 변경 없음: 다시 계산할 필요 없음
+
     try:
-        save_motion(WALK_EXAMPLE_NAME, generate_walk_motion())
-        print(f"[motion_cont] 기본 예제 동작 생성됨: {WALK_EXAMPLE_NAME} "
+        motion = validate_motion(generate_walk_motion())
+        motion["_auto_signature"] = signature
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(motion, f, ensure_ascii=False, indent=2)
+        print(f"[motion_cont] 기본 예제 동작 생성/갱신됨: {WALK_EXAMPLE_NAME} "
               f"(사이클 {_EX_CYCLE_SEC}초, 보폭 {_EX_RANGE}mm, 발들기 {_EX_LIFT}mm)")
     except Exception as e:
         print(f"[motion_cont] 예제 동작 생성 실패: {e}")
