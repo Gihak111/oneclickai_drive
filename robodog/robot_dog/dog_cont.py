@@ -225,6 +225,11 @@ def is_moving():
     return _move["fb"] != 0 or _move["lr"] != 0
 
 
+def current_move():
+    """마지막 이동 명령 (fb, lr). 자율주행 학습 데이터의 라벨(go/left/right)을 정할 때 쓴다."""
+    return _move["fb"], _move["lr"]
+
+
 def set_speed(speed):
     """보행 속도(STEP_ITERATE) 변경. 범위 밖 값은 클램프."""
     try:

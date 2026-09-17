@@ -67,3 +67,16 @@ CAMERA_FLIP = None            # None=안뒤집음, 0=상하, 1=좌우, -1=상하
 
 # ==================== 시스템 정보 설정 ====================
 INFO_UPDATE_INTERVAL = 5      # 웹 UI 상태 정보 갱신 주기 (초)
+
+# ==================== 자율주행 설정 (autonomous/) ====================
+# autonomous_examples/config.py의 항목을 로봇개에 맞게 옮긴 것.
+# 파이프라인: 수동 주행하며 이미지 저장 -> model/model.py로 학습 -> tflite로 자율주행
+AUTO_DIR = os.path.join(THIS_DIR, "autonomous")
+AUTO_IMAGE_DIR = os.path.join(AUTO_DIR, "image")                        # 학습 이미지 저장 폴더
+AUTO_MODEL_PATH = os.path.join(AUTO_DIR, "model", "keras_model.tflite")  # 학습된 모델
+AUTO_LABELS_PATH = os.path.join(AUTO_DIR, "model", "labels.txt")         # 출력 인덱스 -> 라벨 이름
+AUTO_CONTROL_LOOP_SLEEP = 0.08   # 제어 루프 주기 (초). 예제와 동일
+AUTO_CAPTURE_FREQ = 4            # 프레임 저장 주기 (n프레임 중 1프레임 저장)
+AUTO_VIEW_SIZE = 512             # 전처리 중간 크기 (정사각형, 예제와 동일)
+AUTO_CROP_TOP = 200              # 위쪽에서 잘라낼 픽셀 수 (하늘/천장 제거). 예제의 frame[200:, :]
+AUTO_MODEL_INPUT = (64, 64)      # 모델 입력 크기 (model/model.py의 input_shape와 같아야 함)

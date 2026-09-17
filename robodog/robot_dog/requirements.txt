@@ -15,3 +15,9 @@ opencv-python
 psutil
 pyserial
 # netifaces는 라즈베리파이 전용(IP 표시용, 없어도 동작) — PC에서는 설치 생략 가능
+
+# ---- 자율주행(autonomous/) ----
+# 예측(로봇에서 실행): 라즈베리파이는 sudo apt install python3-tflite-runtime
+#                      PC에서는 pip install tflite-runtime  (없으면 tensorflow로 대체됨)
+# 학습(autonomous/model/model.py, 보통 PC에서): pip install tensorflow scikit-learn matplotlib
+# 둘 다 없어도 웹 서버는 뜨며, 자율주행 시작 버튼을 누를 때 안내 메시지가 표시됩니다.

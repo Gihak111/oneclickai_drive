@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>자율주행</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #fff; color: #222; }
+  h2 { margin: 0 0 8px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .center { justify-content: center; }
+  .muted { color: #777; font-size: 12px; }
+  ol { font-size: 13px; padding-left: 20px; margin: 6px 0; }
+  code { background: #f2f2f2; padding: 1px 4px; }
+  .views { display: flex; gap: 12px; flex-wrap: wrap; }
+  .views img { width: 320px; height: 320px; background: #eee; object-fit: contain; border: 1px solid #ccc; display: block; }
+  .cap { font-size: 12px; color: #555; margin-bottom: 4px; }
+  .badge { padding: 2px 10px; border-radius: 4px; font-weight: bold; background: #ddd; color: #444; }
+  .badge.auto { background: #2a2; color: #fff; }
+  .badge.rec { background: #c22; color: #fff; }
+  .cnt { display: inline-block; margin-right: 10px; }
+  .cnt b { font-size: 15px; }
+  .cnt.now b { color: #c22; }
+  .cnt.zero b { color: #c00; }
+  .bar { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 2px 0; }
+  .bar .n { width: 52px; }
+  .bar .t { width: 160px; height: 12px; background: #eee; border: 1px solid #ccc; display: inline-block; }
+  .bar .f { height: 100%; background: #9c9; display: block; }
+  .bar.top .n { font-weight: bold; }
+  .bar.top .f { background: #2a2; }
+  button { padding: 6px 12px; }
+  .pad button { width: 56px; height: 44px; font-size: 18px; }
+  .pad button.on { background: #cfc; }
+  #btn_brake { width: 110px; }
+  #btn_brake.on { background: #fcc; }
+  #status-msg { color: green; min-height: 20px; margin: 6px 0; }
+  #status-msg.err { color: #c00; }
+</style>
+</head>
+<body>
+<h2>자율주행</h2>
+<div class="row"><a href="/">← 조종 화면</a> | <a href="/calibration">캘리브레이션</a> | <a href="/motion">동작 만들기</a></div>
+<ol>
+  <li><b>데이터 모으기</b> — 저장 ON (S) → 방향키로 코스를 여러 번 주행. <b>버튼을 누르고 있는 동안만</b> 그 라벨(go/left/right/brake)로 <code>autonomous/image/</code>에 저장됩니다 (누르는 순간 1장, 계속 누르면 실시간으로 계속).</li>
+  <li><b>학습</b> — PC에서 <code>python autonomous/model/model.py</code> → 생성된 <code>keras_model.tflite</code>를 <code>autonomous/model/</code>에 넣기.</li>
+  <li><b>자율주행</b> — 모델 다시 불러오기 → 자율주행 시작 (Z). 방향키를 누르면 즉시 수동으로 돌아옵니다.</li>
+</ol>
+<div id="status-msg"></div>
+
+<div class="views">
+  <div><div class="cap">카메라</div><img src="/video_feed" alt="camera"></div>
+  <div><div class="cap">모델 입력 (전처리 결과 — 저장 ON 또는 자율주행 중에 표시)</div><img id="preview" alt=""></div>
+</div>
+
+<div class="row" style="margin-top:10px">
+  <span id="mode" class="badge">MANUAL</span>
+  <span id="save" class="badge">NOT SAVING</span>
+  <span>라벨: <b id="label">-</b></span>
+  <span>fps <b id="fps">0</b></span>
+  <span id="frame" class="muted"></span>
+</div>
+<div class="row">
+  <span>모인 이미지</span>
+  <span id="counts" class="muted">읽는 중...</span>
+  <button onclick="refreshCounts()">폴더 다시 읽기</button>
+</div>
+
+<div class="row">
+  <button onclick="setAuto(true)">자율주행 시작 (Z)</button>
+  <button onclick="setAuto(false)">자율주행 정지 (X)</button>
+  <button onclick="setSave(true)">저장 ON (S)</button>
+  <button onclick="setSave(false)">저장 OFF (A)</button>
+  <button onclick="reloadModel()">모델 다시 불러오기</button>
+</div>
+<div id="model-info" class="muted"></div>
+<div id="probs" style="margin:8px 0"></div>
+
+<div class="row center pad" style="margin-top:12px">
+  <button id="btn_arrowup" onmousedown="pressPointer('arrowup')" onmouseup="releasePointer('arrowup')" onmouseleave="releasePointer('arrowup')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowup')" ontouchend="releasePointer('arrowup')" ontouchcancel="releasePointer('arrowup')">↑</button>
+</div>
+<div class="row center pad">
+  <button id="btn_arrowleft" onmousedown="pressPointer('arrowleft')" onmouseup="releasePointer('arrowleft')" onmouseleave="releasePointer('arrowleft')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowleft')" ontouchend="releasePointer('arrowleft')" ontouchcancel="releasePointer('arrowleft')">←</button>
+  <button id="btn_arrowdown" onmousedown="pressPointer('arrowdown')" onmouseup="releasePointer('arrowdown')" onmouseleave="releasePointer('arrowdown')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowdown')" ontouchend="releasePointer('arrowdown')" ontouchcancel="releasePointer('arrowdown')">↓</button>
+  <button id="btn_arrowright" onmousedown="pressPointer('arrowright')" onmouseup="releasePointer('arrowright')" onmouseleave="releasePointer('arrowright')"
+          ontouchstart="event.preventDefault(); pressPointer('arrowright')" ontouchend="releasePointer('arrowright')" ontouchcancel="releasePointer('arrowright')">→</button>
+  <button id="btn_brake" onmousedown="setBrake(true)" onmouseup="setBrake(false)" onmouseleave="setBrake(false)"
+          ontouchstart="event.preventDefault(); setBrake(true)" ontouchend="setBrake(false)" ontouchcancel="setBrake(false)">B </button>
+</div>
+<div class="muted center row">
+  이 페이지는 예제(autonomous_examples)와 같은 키를 씁니다 — 방향키 = 수동 주행 · S/A = 저장 ON/OFF · Z/X = 자율주행 시작/정지 · B(누르는 동안) = 브레이크(정지 라벨). WASD는 쓰지 않습니다.
+</div>
+
+<script>
+function postJson(url, data) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {})
+  }).then(function (r) { return r.json().then(function (d) { d._ok = r.ok; return d; }); });
+}
+
+function showStatus(msg, isError) {
+  var el = document.getElementById('status-msg');
+  el.innerText = msg;
+  el.className = isError ? 'err' : '';
+  setTimeout(function () { if (el.innerText === msg) el.innerText = ''; }, 4000);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// ==================== 수동 주행 (방향키) ====================
+// 방향키를 누르면 서버가 자율주행을 먼저 멈추고 수동 명령을 적용한다 (수동 개입 우선).
+var pressed = {};
+var pointerHeld = {};
+var braking = false;
+var isAuto = false;
+
+function moveFromKeys() {
+  var fb = 0, lr = 0;
+  if (braking) return { fb: 0, lr: 0 };   // 브레이크가 최우선 (예제 drive()와 동일)
+  if (pressed.arrowup) fb = 1; else if (pressed.arrowdown) fb = -1;
+  if (pressed.arrowleft) lr = -1; else if (pressed.arrowright) lr = 1;
+  return { fb: fb, lr: lr };
+}
+
+function postMove() {
+  var m = moveFromKeys();
+  postJson('/api/command', { A: 1000, B: m.fb, C: m.lr }).catch(function () { });
+  if (m.fb || m.lr) postJson('/api/hold', { move: true }).catch(function () { });
+}
+
+function setPad(k, on) {
+  var b = document.getElementById('btn_' + k);
+  if (b) b.className = on ? 'on' : '';
+}
+
+function press(k) { if (pressed[k]) return; pressed[k] = true; setPad(k, true); postMove(); }
+function release(k) { if (!pressed[k]) return; pressed[k] = false; setPad(k, false); postMove(); }
+
+// 화면 버튼(마우스/터치) 전용: mouseleave 가 키보드로 누른 것까지 놓지 않도록 구분한다
+function pressPointer(k) { pointerHeld[k] = true; press(k); }
+function releasePointer(k) { if (!pointerHeld[k]) return; delete pointerHeld[k]; release(k); }
+
+function anyKeyHeld() {
+  for (var k in pressed) { if (pressed[k]) return true; }
+  return false;
+}
+
+// ==================== 브레이크 ====================
+// 저장 라벨을 brake 로 바꾼다. 수동 중이면 로봇을 세우고, 자율주행 중이면 워커가 세운다
+// (자율주행 중에 이동 명령을 보내면 자율주행이 꺼져 버리므로 서버 플래그만 바꾼다).
+function setBrake(on) {
+  if (braking === on) return;
+  braking = on;
+  document.getElementById('btn_brake').className = on ? 'on' : '';
+  postJson('/api/autonomous/brake', { on: on }).catch(function () { });
+  if (!isAuto) postMove();
+}
+
+// ==================== 모드 ====================
+function setAuto(on) {
+  postJson('/api/autonomous/auto', { on: on }).then(function (d) {
+    if (d.error) showStatus(d.error, true);
+    else showStatus(d.message || (on ? '자율주행 시작' : '자율주행 정지'));
+    pollStatus();
+  }).catch(function () { showStatus('요청 실패', true); });
+}
+
+function countsText(counts) {
+  if (!counts) return '';
+  var total = 0;
+  Object.keys(counts).forEach(function (k) { total += counts[k]; });
+  return total ? '이미 ' + total + '장 있습니다 (' + describeCounts(counts) + ')'
+               : '아직 모은 이미지가 없습니다';
+}
+
+function describeCounts(counts) {
+  return Object.keys(counts).map(function (k) { return k + ' ' + counts[k]; }).join(', ');
+}
+
+function setSave(on) {
+  postJson('/api/autonomous/save', { on: on }).then(function (d) {
+    if (d.error) { showStatus(d.error, true); return; }
+    var tail = d.counts ? ' — ' + countsText(d.counts) : '';
+    showStatus(on ? '저장 ON — 방향키/브레이크를 누르고 있는 동안 저장됩니다' + tail
+                  : '저장 OFF' + tail);
+    pollStatus();
+  }).catch(function () { showStatus('요청 실패', true); });
+}
+
+function refreshCounts() {
+  postJson('/api/autonomous/refresh_counts', {}).then(function (d) {
+    if (d.counts) showStatus('폴더를 다시 읽었습니다 — ' + countsText(d.counts));
+    pollStatus();
+  }).catch(function () { showStatus('요청 실패', true); });
+}
+
+function reloadModel() {
+  showStatus('모델 불러오는 중...');
+  postJson('/api/autonomous/reload_model', {}).then(function (d) {
+    if (d.error) showStatus(d.error, true);
+    else showStatus('모델 로드 완료: ' + (d.labels || []).join(', '));
+    pollStatus();
+  }).catch(function () { showStatus('요청 실패', true); });
+}
+
+// ==================== 상태 표시 ====================
+var previewOn = false;
+
+function renderCounts(s) {
+  var el = document.getElementById('counts');
+  var c = s.counts;
+  if (!c) { el.innerText = '읽는 중...'; return; }
+  var total = 0, html = '';
+  Object.keys(c).forEach(function (k) {
+    total += c[k];
+    var cls = 'cnt' + (s.label_now === k ? ' now' : (c[k] === 0 ? ' zero' : ''));
+    html += '<span class="' + cls + '">' + esc(k) + ' <b>' + c[k] + '</b></span>';
+  });
+  html += '<span class="cnt">합계 <b>' + total + '</b></span>';
+  if (s.saved_session) html += '<span class="cnt muted">(이번에 +' + s.saved_session + ')</span>';
+  el.innerHTML = html;
+}
+
+function renderProbs(s) {
+  var el = document.getElementById('probs');
+  var labels = s.labels || [];
+  if (!labels.length || !s.auto) { el.innerHTML = ''; return; }
+  var html = '';
+  labels.forEach(function (name) {
+    var p = (s.probs && s.probs[name] != null) ? s.probs[name] : 0;
+    html += '<div class="bar' + (s.action === name ? ' top' : '') + '">'
+      + '<span class="n">' + esc(name) + '</span>'
+      + '<span class="t"><span class="f" style="width:' + Math.round(p * 100) + '%"></span></span>'
+      + '<span>' + p.toFixed(2) + '</span></div>';
+  });
+  el.innerHTML = html;
+}
+
+function pollStatus() {
+  fetch('/api/autonomous/status').then(function (r) { return r.json(); }).then(function (s) {
+    isAuto = !!s.auto;
+    var mode = document.getElementById('mode');
+    mode.innerText = s.auto ? 'AUTO' + (s.action ? ' → ' + s.action : '') : 'MANUAL';
+    mode.className = 'badge' + (s.auto ? ' auto' : '');
+    var save = document.getElementById('save');
+    save.innerText = s.saving ? 'SAVING' : 'NOT SAVING';
+    save.className = 'badge' + (s.saving ? ' rec' : '');
+    document.getElementById('label').innerText = s.label_now || (s.saving ? '(버튼을 누르면 저장)' : '-');
+    document.getElementById('fps').innerText = s.fps || 0;
+    renderCounts(s);
+    document.getElementById('frame').innerText =
+      (s.auto || s.saving) ? (s.frame_ok ? '' : '카메라 프레임 없음') : '';
+    document.getElementById('model-info').innerText = s.model_loaded
+      ? '모델: ' + s.model_path + '  [' + (s.labels || []).join(', ') + ']'
+      : '모델 없음' + (s.model_error ? ' — ' + s.model_error : ' (자율주행 시작 시 불러옵니다)');
+    previewOn = !!s.frame_ok && (s.auto || s.saving);
+    renderProbs(s);
+  }).catch(function () { });
+}
+setInterval(pollStatus, 500);
+pollStatus();
+
+// 모델 입력 미리보기 갱신 (프레임이 있을 때만 요청해서 깨진 이미지가 뜨지 않게)
+setInterval(function () {
+  if (document.hidden || !previewOn) return;
+  document.getElementById('preview').src = '/api/autonomous/preview.jpg?t=' + Date.now();
+}, 250);
+
+// ==================== keep-alive ====================
+// 1) 페이지 존재 신호: 끊기면 서버가 HOLD_TIMEOUT 뒤 자율주행/저장을 스스로 멈춘다.
+// 2) 수동 주행 중(키를 누르고 있는 동안)에는 이동 keep-alive 도 같이 보낸다.
+setInterval(function () {
+  postJson('/api/autonomous/hold', {}).catch(function () { });
+  if (anyKeyHeld() && !braking) postJson('/api/hold', { move: true }).catch(function () { });
+}, 1000);
+
+// ==================== 키보드 (예제와 같은 키) ====================
+document.addEventListener('keydown', function (e) {
+  if (e.repeat) return;
+  var k = e.key.toLowerCase();
+  if (k === 'arrowup' || k === 'arrowdown' || k === 'arrowleft' || k === 'arrowright') {
+    e.preventDefault();
+    press(k);
+  } else if (k === 'z') setAuto(true);
+  else if (k === 'x') setAuto(false);
+  else if (k === 's') setSave(true);
+  else if (k === 'a') setSave(false);
+  else if (k === 'b') setBrake(true);
+});
+document.addEventListener('keyup', function (e) {
+  var k = e.key.toLowerCase();
+  if (k.indexOf('arrow') === 0) release(k);
+  else if (k === 'b') setBrake(false);
+});
+
+// 창이 포커스를 잃으면(다른 창 클릭, 알림 등) keyup 을 못 받으므로 눌린 키를 전부 놓는다
+window.addEventListener('blur', function () {
+  Object.keys(pressed).forEach(function (k) { release(k); });
+  setBrake(false);
+});
+
+// 탭 닫기/뒤로가기: 자율주행·저장 종료 (서버 keep-alive 만료를 기다리지 않고 즉시)
+window.addEventListener('pagehide', function () {
+  var payload = new Blob([JSON.stringify({})], { type: 'application/json' });
+  navigator.sendBeacon('/api/autonomous/leave', payload);
+});
+</script>
+</body>
+</html>

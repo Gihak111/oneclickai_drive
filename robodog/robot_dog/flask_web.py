@@ -16,6 +16,7 @@ import util
 import dog_cont
 import key_cont
 import motion_cont
+from autonomous import auto_cont
 from camera_stream import camera, HEADERS_NO_CACHE
 from config import (WEB_PORT, INFO_UPDATE_INTERVAL, SERVO_NAMES, MOTION_PREVIEW_MS,
                     MOTION_MIN_SEGMENT_MS, MOTION_MAX_SEGMENT_MS,
@@ -88,6 +89,16 @@ def _json_dict():
     return data if isinstance(data, dict) else {}
 
 
+def _take_over():
+    """
+    사용자가 직접 개입할 때(특수기능/캘리브레이션/동작 편집·재생/자세 읽기) 먼저 부른다.
+    자율주행과 동작 재생을 멈춰서, 뒤이어 보내는 명령과 서로 싸우지 않게 한다.
+    """
+    auto_cont.stop_auto()
+    if motion_cont.is_playing():
+        motion_cont.stop(to_home=False)
+
+
 # ==================== 페이지 라우팅 ====================
 
 @app.route('/')
@@ -152,6 +163,7 @@ def keys():
     if not isinstance(keys_in, list):
         keys_in = []
     keys_in = [str(k)[:16] for k in keys_in[:16]]
+    auto_cont.stop_auto()  # 수동 조종 개입 -> 자율주행 정지
     key_cont.handle_key(keys_in)
     return jsonify({"status": "success", "received": {"keys": keys_in}})
 
@@ -192,6 +204,7 @@ def handle_command(data):
     if cmd_type == 1000:
         fb = _as_int(data.get("B"), -1, 1, 0)
         lr = _as_int(data.get("C"), -1, 1, 0)
+        auto_cont.stop_auto()  # 수동 조종 개입 -> 자율주행 정지 (정지 명령도 개입이다)
         if fb != 0 or lr != 0:
             if motion_cont.is_playing():
                 motion_cont.stop(to_home=False)  # 조종 개입 시 동작 재생 중단
@@ -204,14 +217,12 @@ def handle_command(data):
         funcs = {1: dog_cont.function_stay_low, 2: dog_cont.function_handshake,
                  3: dog_cont.function_jump, 4: dog_cont.function_stand}
         if func_num in funcs:
-            if motion_cont.is_playing():
-                motion_cont.stop(to_home=False)
+            _take_over()
             funcs[func_num]()
 
     # 캘리브레이션
     elif cmd_type == 2000:
-        if motion_cont.is_playing():
-            motion_cont.stop(to_home=False)  # 재생 중인 J가 캘리브레이션 자세를 덮지 않게
+        _take_over()  # 재생 중인 J나 자율주행 M이 캘리브레이션 자세를 덮지 않게
         dog_cont.enter_calibration_mode()
     elif cmd_type == 2001:
         dog_cont.exit_calibration_mode()
@@ -307,6 +318,7 @@ def api_motion_play(name):
     data = _json_dict()
     loop = _as_bool(data.get("loop")) if data.get("loop") is not None else None
     hold = _as_bool(data.get("hold"))
+    auto_cont.stop_auto()
     try:
         motion_cont.play(name, loop=loop, hold=hold)
     except ValueError as e:
@@ -328,6 +340,7 @@ def api_motion_play_data():
         return jsonify({"error": "motion(동작 데이터)이 필요합니다."}), 400
     loop = _as_bool(data.get("loop")) if data.get("loop") is not None else None
     hold = _as_bool(data.get("hold"))
+    auto_cont.stop_auto()
     try:
         motion_cont.play_data(motion, loop=loop, hold=hold)
     except ValueError as e:
@@ -373,8 +386,7 @@ def api_motion_pose():
     if duration is None:
         return jsonify({"error": "duration_ms는 숫자여야 합니다."}), 400
 
-    if motion_cont.is_playing():
-        motion_cont.stop(to_home=False)
+    _take_over()
 
     # 부분 포즈: 지정 서보만 이동
     servos = data.get("servos")
@@ -408,8 +420,7 @@ def api_motion_current_pose():
     응답 없는 서보가 있으면 503 + reason="servo" + failed=[인덱스...] (틀린 값을 주지 않음)
     """
     source = 'goal' if request.args.get('source') == 'goal' else 'present'
-    if motion_cont.is_playing():
-        motion_cont.stop(to_home=False)  # 움직이는 중에는 자세를 읽을 수 없다
+    _take_over()  # 움직이는 중에는 자세를 읽을 수 없다
     try:
         angles = dog_cont.read_pose(source)
     except dog_cont.ServoReadError as e:
@@ -425,8 +436,7 @@ def api_motion_torque():
     """토크 켜기/끄기 (끄면 손으로 자세를 잡을 수 있다). 재생 중이면 먼저 멈춘다."""
     data = _json_dict()
     on = _as_bool(data.get("on"))
-    if motion_cont.is_playing():
-        motion_cont.stop(to_home=False)
+    _take_over()
     if on:
         dog_cont.enable_torque()
     else:
@@ -449,6 +459,85 @@ def api_keybindings_set():
         return jsonify({"status": "success", "bindings": key_cont.get_bindings()})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+
+
+# ==================== 자율주행 API ====================
+
+@app.route('/autonomous')
+def autonomous_page():
+    return render_template('autonomous.html')
+
+
+@app.route('/api/autonomous/status', methods=['GET'])
+def api_auto_status():
+    return jsonify(auto_cont.get_status())
+
+
+@app.route('/api/autonomous/hold', methods=['POST'])
+def api_auto_hold():
+    """자율주행 페이지 keep-alive (1초마다). HOLD_TIMEOUT 동안 끊기면 auto_cont가 스스로 멈춘다."""
+    auto_cont.touch()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/autonomous/auto', methods=['POST'])
+def api_auto_toggle():
+    """자율주행 시작/정지. body: {"on": bool}"""
+    if _as_bool(_json_dict().get("on")):
+        if motion_cont.is_playing():
+            motion_cont.stop(to_home=False)
+        ok, msg = auto_cont.start_auto()
+        if not ok:
+            return jsonify({"error": msg}), 400
+        return jsonify({"status": "success", "message": msg})
+    auto_cont.stop_auto()
+    return jsonify({"status": "success", "message": "자율주행 정지"})
+
+
+@app.route('/api/autonomous/save', methods=['POST'])
+def api_auto_save():
+    """
+    학습 이미지 저장 ON/OFF. body: {"on": bool}
+    켜고 끌 때 image/ 폴더를 다시 읽어, 이전에 모아 둔 것까지 합친 라벨별 장수를 돌려준다.
+    """
+    auto_cont.set_saving(_as_bool(_json_dict().get("on")))
+    return jsonify({"status": "success", "counts": auto_cont.get_status()["counts"]})
+
+
+@app.route('/api/autonomous/refresh_counts', methods=['POST'])
+def api_auto_refresh_counts():
+    """image/ 폴더를 다시 읽어 라벨별 장수를 갱신한다 (파일을 직접 지우거나 복사했을 때)."""
+    return jsonify({"status": "success", "counts": auto_cont.refresh_counts()})
+
+
+@app.route('/api/autonomous/brake', methods=['POST'])
+def api_auto_brake():
+    """브레이크(정지 라벨) ON/OFF. body: {"on": bool}"""
+    auto_cont.set_brake(_as_bool(_json_dict().get("on")))
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/autonomous/reload_model', methods=['POST'])
+def api_auto_reload_model():
+    if auto_cont.load_model():
+        return jsonify({"status": "success", "labels": auto_cont.get_status()["labels"]})
+    return jsonify({"error": auto_cont.get_status()["model_error"]}), 400
+
+
+@app.route('/api/autonomous/leave', methods=['POST'])
+def api_auto_leave():
+    """페이지 이탈(pagehide) 신호: 자율주행과 저장을 모두 끈다."""
+    auto_cont.stop_all()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/autonomous/preview.jpg', methods=['GET'])
+def api_auto_preview():
+    """모델 입력 미리보기(전처리 결과). 아직 프레임이 없으면 204."""
+    buf = auto_cont.get_preview_jpeg()
+    if buf is None:
+        return ('', 204)
+    return Response(buf, mimetype='image/jpeg', headers=HEADERS_NO_CACHE)
 
 
 # ==================== 메인 실행 ====================
@@ -474,12 +563,14 @@ if __name__ == "__main__":
     print(f"  - 조종:        http://<IP>:{WEB_PORT}/")
     print(f"  - 캘리브레이션: http://<IP>:{WEB_PORT}/calibration")
     print(f"  - 동작 편집:    http://<IP>:{WEB_PORT}/motion")
+    print(f"  - 자율주행:     http://<IP>:{WEB_PORT}/autonomous")
 
     try:
         app.run(host='0.0.0.0', port=WEB_PORT, threaded=True, use_reloader=False)
     except KeyboardInterrupt:
         print("프로그램 종료 중...")
     finally:
+        auto_cont.stop_all()
         motion_cont.stop(to_home=False)
         dog_cont.release_torque()
         print("모든 장치가 비활성화되었습니다. 종료.")

@@ -38,7 +38,8 @@ class CameraStream:
         self.cap = None
         self._thread = None
         self._running = False
-        self._latest = None
+        self._latest = None          # 최신 JPEG (MJPEG 스트림용)
+        self._latest_frame = None    # 최신 BGR ndarray (자율주행 모델 입력용)
         # 프레임 일련번호. 시청자마다 "내가 마지막에 본 번호"를 들고 다음 프레임을
         # 기다리므로, 여러 명이 동시에 봐도 서로 프레임을 뺏지 않는다.
         self._seq = 0
@@ -114,6 +115,7 @@ class CameraStream:
                 if ok:
                     with self._cond:
                         self._latest = jpeg.tobytes()
+                        self._latest_frame = frame   # 자율주행(모델 입력)용 원본 BGR 프레임
                         self._seq += 1
                         self._cond.notify_all()
             except Exception as e:
@@ -135,6 +137,20 @@ class CameraStream:
                     return last_seq, None
                 self._cond.wait(remaining)
             return self._seq, self._latest
+
+    def get_frame(self, last_seq=0, wait_ms=1000):
+        """
+        last_seq 이후의 새 BGR 프레임(ndarray)을 기다려 (일련번호, 프레임)을 반환한다.
+        get_jpeg와 같은 규칙 — 새 프레임이 없으면 (last_seq, None).
+        """
+        deadline = time.monotonic() + wait_ms / 1000.0
+        with self._cond:
+            while self._seq == last_seq and self._running:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return last_seq, None
+                self._cond.wait(remaining)
+            return self._seq, self._latest_frame
 
     def mjpeg_generator(self):
         """MJPEG 스트림(HTTP용) 생성 제너레이터. 카메라가 닫히면 스트림도 끝난다."""
